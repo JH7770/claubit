@@ -1,10 +1,51 @@
 # US Market Volatility Hunter
 
-고배율 레버리지 단타 매매 봇 - Phase 1 구현 완료
+고배율 레버리지 단타 매매 봇 - **Phase 2 구현 완료** ✅
 
 ## 프로젝트 개요
 
 미국 주식 시장 개장 시간에 맞춰 변동성이 극대화되는 시점에 최적의 전략을 동적으로 선정하여 암호화폐 선물 거래를 수행하는 자동매매 시스템입니다.
+
+**핵심 철학:** "Static Strategy is Dead" - 고정된 전략이 아닌, 매일 백테스팅을 통해 검증된 '오늘의 챔피언 전략'을 선출하여 운용하는 메타 전략 시스템.
+
+## Phase 2 완료 사항 (NEW!)
+
+### ✅ 구현된 기능
+
+1. **벡터화된 백테스팅 엔진** (`modules/backtester.py`)
+   - 고성능 pandas 기반 백테스팅
+   - 레버리지, 수수료, 슬리피지 시뮬레이션
+   - SL/TP 자동 실행 (intra-candle 시뮬레이션)
+   - 종합 성과 지표 계산 (수익률, 승률, Profit Factor, MDD, Sharpe Ratio)
+   - 복합 점수 계산 (기획문서 공식 적용)
+
+2. **3가지 핵심 전략 구현**
+   - **ST-01: Volatility Breakout** (`strategies/volatility_breakout.py`)
+     - Larry Williams 변동성 돌파 전략
+     - 파라미터: k (noise ratio), lookback_period, MA filter
+   - **ST-02: RSI + Bollinger Reversion** (`strategies/rsi_bollinger.py`)
+     - RSI와 볼린저 밴드를 활용한 평균 회귀 전략
+     - 횡보장에 최적화
+   - **ST-03: Volume Weighted MA Cross** (`strategies/volume_ma_cross.py`)
+     - 거래량 확인이 포함된 이동평균 크로스오버
+     - 신뢰도 높은 신호만 거래
+
+3. **Optuna 기반 파라미터 최적화** (`modules/optimizer.py`)
+   - 베이지안 최적화를 통한 하이퍼파라미터 탐색
+   - 제약 조건 설정 (최소 거래 수, 최대 낙폭)
+   - Grid Search 지원
+   - 최적화 결과 데이터베이스 저장
+
+4. **데이터베이스 확장**
+   - `optimization_runs` 테이블 추가
+   - 백테스트 결과 저장/조회 메서드
+   - 날짜별 최적 전략 조회
+
+5. **테스트 및 예제 스크립트**
+   - Phase 2 통합 테스트 (`tests/test_phase2.py`)
+   - 백테스팅 예제 (`examples/example_backtest.py`)
+   - 최적화 예제 (`examples/example_optimization.py`)
+   - 일별 전략 선정 시뮬레이션 (`examples/daily_strategy_selection.py`)
 
 ## Phase 1 완료 사항
 
@@ -102,6 +143,74 @@ python config/config.py
 python database/init_db.py --reset
 ```
 
+### Phase 2 테스트 실행
+
+```bash
+# Phase 2 통합 테스트
+python tests/test_phase2.py
+
+# 백테스팅 예제
+python examples/example_backtest.py
+
+# 파라미터 최적화 예제
+python examples/example_optimization.py
+
+# 일별 전략 선정 시뮬레이션
+python examples/daily_strategy_selection.py
+```
+
+### 백테스팅 사용 예제
+
+```python
+from modules import VectorizedBacktester
+from strategies import VolatilityBreakoutStrategy
+import pandas as pd
+
+# 데이터 로드
+df = pd.read_parquet('data/BTCUSDT_1m.parquet')
+
+# 전략 초기화
+strategy = VolatilityBreakoutStrategy(params={
+    'k': 0.5,
+    'lookback_period': 24
+})
+
+# 백테스팅 실행
+backtester = VectorizedBacktester(initial_balance=10000, leverage=10)
+results = backtester.run_backtest(df, strategy)
+
+# 결과 출력
+print(f"Total Return: {results['total_return']:.2f}%")
+print(f"Win Rate: {results['win_rate']:.2f}%")
+print(f"Composite Score: {results['score']:.2f}")
+```
+
+### 파라미터 최적화 사용 예제
+
+```python
+from modules import VectorizedBacktester, StrategyOptimizer
+from strategies import VolatilityBreakoutStrategy
+
+# 최적화 실행
+backtester = VectorizedBacktester(initial_balance=10000, leverage=10)
+optimizer = StrategyOptimizer(backtester)
+
+param_space = {
+    'k': {'type': 'float', 'low': 0.3, 'high': 0.8, 'step': 0.1},
+    'lookback_period': {'type': 'categorical', 'choices': [12, 24, 48]}
+}
+
+best_params, trials_df = optimizer.optimize_strategy(
+    strategy_class=VolatilityBreakoutStrategy,
+    df=df,
+    param_space=param_space,
+    n_trials=50,
+    objective_metric='score'
+)
+
+print(f"Best parameters: {best_params}")
+```
+
 ## 프로젝트 구조
 
 ```
@@ -112,24 +221,57 @@ claubit/
 │   └── .env.example       # 환경 변수 템플릿
 ├── data/                   # OHLCV 데이터 저장
 ├── database/               # SQLite 데이터베이스
-│   └── init_db.py         # DB 초기화 스크립트
+│   └── init_db.py         # DB 초기화 및 관리
 ├── strategies/             # 전략 클래스
 │   ├── __init__.py
-│   └── base_strategy.py   # 기본 전략 클래스
+│   ├── base_strategy.py   # 기본 전략 클래스
+│   ├── volatility_breakout.py  # ST-01 전략
+│   ├── rsi_bollinger.py        # ST-02 전략
+│   └── volume_ma_cross.py      # ST-03 전략
 ├── modules/                # 핵심 기능 모듈
 │   ├── __init__.py
 │   ├── collector.py       # 데이터 수집
 │   ├── executor.py        # 주문 실행
-│   └── notifier.py        # 텔레그램 알림
+│   ├── notifier.py        # 텔레그램 알림
+│   ├── backtester.py      # 백테스팅 엔진
+│   └── optimizer.py       # Optuna 최적화
+├── tests/                  # 테스트 스크립트
+│   └── test_phase2.py     # Phase 2 통합 테스트
+├── examples/               # 사용 예제
+│   ├── example_backtest.py
+│   ├── example_optimization.py
+│   └── daily_strategy_selection.py
 ├── requirements.txt        # Python 의존성
+├── 기획문서.md             # 프로젝트 기획서
+├── STRATEGIES.md          # 전략 상세 명세
 └── README.md              # 프로젝트 문서
 ```
 
-## 다음 단계 (Phase 2)
+## 개발 로드맵
 
-- [ ] 대표 전략 3종 구현
-- [ ] Vectorized Backtesting 엔진
-- [ ] Optuna 연동 및 파라미터 최적화
+- [x] **Phase 1: 기반 구축** ✅
+  - CCXT 연동 및 주문 모듈
+  - 텔레그램 봇 모듈
+  - 데이터 수집기
+  - 기본 전략 클래스
+  - 데이터베이스 시스템
+
+- [x] **Phase 2: 전략 및 백테스팅** ✅
+  - 대표 전략 3종 구현 (ST-01, ST-02, ST-03)
+  - Vectorized Backtesting 엔진
+  - Optuna 연동 및 파라미터 최적화
+  - 테스트 및 예제 스크립트
+
+- [ ] **Phase 3: Meta-Strategy 로직** (다음 단계)
+  - Daily Selector (오늘의 전략 선정 자동화)
+  - Paper Trading 시뮬레이터
+  - 전략 성과 비교 및 랭킹
+
+- [ ] **Phase 4: Streamlit 대시보드**
+  - 실시간 모니터링 UI
+  - 백테스팅 결과 시각화
+  - 최적화 결과 분석 도구
+  - 시스템 제어 인터페이스
 
 ## 주의사항
 

@@ -145,6 +145,23 @@ class DatabaseManager:
             )
         """)
 
+        # Create optimization_runs table (for tracking Optuna optimization results)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS optimization_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL,
+                strategy_id INTEGER,
+                strategy_name TEXT NOT NULL,
+                n_trials INTEGER,
+                best_score REAL,
+                best_params TEXT,
+                objective_metric TEXT,
+                duration_seconds REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (strategy_id) REFERENCES strategy_pool(id)
+            )
+        """)
+
         # Create indexes for better query performance
         self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_backtest_date
@@ -184,13 +201,18 @@ class DatabaseManager:
             },
             {
                 'name': 'Volatility_Breakout',
-                'description': 'Volatility-based Breakout Strategy',
-                'params': '{"k": 0.5, "window": 20}'
+                'description': 'ST-01: Volatility Breakout (Larry Williams inspired)',
+                'params': '{"k": 0.5, "lookback_period": 24, "ma_period": 20, "use_ma_filter": false, "stop_loss_percent": 2.0, "take_profit_percent": 4.0}'
             },
             {
-                'name': 'RSI_Scalping',
-                'description': 'RSI-based Scalping Strategy',
-                'params': '{"rsi_period": 14, "oversold": 30, "overbought": 70}'
+                'name': 'RSI_Bollinger_Reversion',
+                'description': 'ST-02: RSI + Bollinger Band Mean Reversion',
+                'params': '{"rsi_period": 14, "rsi_buy_threshold": 30, "rsi_sell_threshold": 70, "bb_period": 20, "bb_stddev": 2.0, "stop_loss_percent": 2.0, "take_profit_percent": 4.0}'
+            },
+            {
+                'name': 'Volume_MA_Cross',
+                'description': 'ST-03: Volume Weighted MA Crossover',
+                'params': '{"short_window": 10, "long_window": 30, "vol_lookback": 20, "vol_multiplier": 2.0, "stop_loss_percent": 2.0, "take_profit_percent": 4.0}'
             }
         ]
 
@@ -279,6 +301,144 @@ class DatabaseManager:
         ))
         self.conn.commit()
         self.close()
+
+    def save_optimization_run(self, run_data: dict):
+        """
+        Save optimization run results to database.
+
+        Args:
+            run_data: Dictionary with optimization run data
+                - date: Date of optimization
+                - strategy_name: Name of strategy
+                - n_trials: Number of trials run
+                - best_score: Best score achieved
+                - best_params: Best parameters (JSON string)
+                - objective_metric: Metric optimized
+                - duration_seconds: Optimization duration
+        """
+        self.connect()
+        self.conn.execute("""
+            INSERT INTO optimization_runs
+            (date, strategy_name, n_trials, best_score, best_params,
+             objective_metric, duration_seconds)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            run_data['date'],
+            run_data['strategy_name'],
+            run_data['n_trials'],
+            run_data['best_score'],
+            run_data['best_params'],
+            run_data['objective_metric'],
+            run_data['duration_seconds']
+        ))
+        self.conn.commit()
+        self.close()
+
+    def save_backtest_result(self, result_data: dict):
+        """
+        Save backtest result to database.
+
+        Args:
+            result_data: Dictionary with backtest result data
+                - date: Date of backtest
+                - strategy_name: Name of strategy
+                - params: Parameters used (JSON string)
+                - total_return: Total return percentage
+                - win_rate: Win rate percentage
+                - profit_factor: Profit factor
+                - max_drawdown: Maximum drawdown percentage
+                - sharpe_ratio: Sharpe ratio
+                - total_trades: Number of trades
+                - score: Composite score
+                - rank: Ranking (optional)
+        """
+        self.connect()
+        self.conn.execute("""
+            INSERT INTO backtest_results
+            (date, strategy_name, params, total_return, win_rate,
+             profit_factor, max_drawdown, sharpe_ratio, total_trades, score, rank)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            result_data['date'],
+            result_data['strategy_name'],
+            result_data['params'],
+            result_data['total_return'],
+            result_data['win_rate'],
+            result_data['profit_factor'],
+            result_data['max_drawdown'],
+            result_data['sharpe_ratio'],
+            result_data['total_trades'],
+            result_data['score'],
+            result_data.get('rank', 0)
+        ))
+        self.conn.commit()
+        self.close()
+
+    def get_best_strategy_for_date(self, date: str):
+        """
+        Get the best performing strategy for a given date.
+
+        Args:
+            date: Date string (YYYY-MM-DD)
+
+        Returns:
+            Dictionary with strategy data, or None if not found
+        """
+        self.connect()
+        cursor = self.conn.execute("""
+            SELECT * FROM backtest_results
+            WHERE date = ?
+            ORDER BY score DESC
+            LIMIT 1
+        """, (date,))
+        result = cursor.fetchone()
+        self.close()
+
+        if result:
+            return dict(result)
+        return None
+
+    def get_recent_backtest_results(self, days: int = 7):
+        """
+        Get recent backtest results.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            List of backtest results
+        """
+        self.connect()
+        cursor = self.conn.execute("""
+            SELECT * FROM backtest_results
+            WHERE date >= date('now', '-' || ? || ' days')
+            ORDER BY date DESC, score DESC
+        """, (days,))
+        results = cursor.fetchall()
+        self.close()
+        return [dict(row) for row in results]
+
+    def get_strategy_by_name(self, strategy_name: str):
+        """
+        Get strategy from pool by name.
+
+        Args:
+            strategy_name: Name of the strategy
+
+        Returns:
+            Dictionary with strategy data, or None if not found
+        """
+        self.connect()
+        cursor = self.conn.execute("""
+            SELECT * FROM strategy_pool
+            WHERE strategy_name = ?
+        """, (strategy_name,))
+        result = cursor.fetchone()
+        self.close()
+
+        if result:
+            return dict(result)
+        return None
 
     def reset_database(self):
         """Drop all tables and recreate them. WARNING: This deletes all data!"""
