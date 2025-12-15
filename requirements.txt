@@ -1,0 +1,28 @@
+# Trading Bot Dependencies
+
+# Exchange Integration
+ccxt>=4.0.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Telegram Bot
+python-telegram-bot>=20.0
+
+# Configuration & Environment
+python-dotenv>=1.0.0
+
+# Database (SQLite is built-in, but we can use SQLAlchemy for ORM if needed)
+# sqlalchemy>=2.0.0
+
+# Optimization (for later phases)
+optuna>=3.0.0
+
+# Dashboard (for Phase 4)
+streamlit>=1.28.0
+plotly>=5.17.0
+
+# Additional utilities
+pytz>=2023.3
+requests>=2.31.0
