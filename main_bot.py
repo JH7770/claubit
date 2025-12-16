@@ -18,6 +18,8 @@ from datetime import datetime
 import logging
 from typing import Optional
 import json
+import signal
+import os
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from pytz import timezone
@@ -63,6 +65,13 @@ class TradingBot:
             config: Configuration instance
         """
         self.config = config or Config()
+
+        # Shutdown flag
+        self.should_stop = False
+
+        # Register signal handlers for graceful shutdown
+        signal.signal(signal.SIGTERM, self._handle_shutdown)
+        signal.signal(signal.SIGINT, self._handle_shutdown)
 
         # Initialize core modules
         self.db_manager = DatabaseManager(self.config.DB_PATH)
@@ -126,6 +135,25 @@ class TradingBot:
         logger.info(f"  Exchange: {self.config.EXCHANGE_NAME}")
         logger.info(f"  Primary Symbol: {self.config.PRIMARY_SYMBOL}")
         logger.info(f"  Leverage: {self.config.LEVERAGE}x")
+
+    def _handle_shutdown(self, signum, frame):
+        """
+        Handle shutdown signal gracefully.
+
+        Args:
+            signum: Signal number
+            frame: Current stack frame
+        """
+        logger.info(f"Shutdown signal received (signal {signum}), stopping bot gracefully...")
+        self.should_stop = True
+
+        # Close all open positions
+        try:
+            if hasattr(self.executor, 'force_close_all_positions'):
+                logger.info("Closing all open positions...")
+                self.executor.force_close_all_positions(reason="shutdown")
+        except Exception as e:
+            logger.error(f"Error closing positions during shutdown: {e}")
 
     def run_data_sync(self):
         """
@@ -403,9 +431,12 @@ class TradingBot:
         logger.info("="*70)
 
         try:
+            # Run scheduler in non-blocking mode
             scheduler.start()
         except (KeyboardInterrupt, SystemExit):
-            logger.info("Shutting down gracefully...")
+            logger.info("Keyboard interrupt received, shutting down gracefully...")
+            self.should_stop = True
+        finally:
             scheduler.shutdown()
             logger.info("Bot stopped")
 
@@ -427,19 +458,34 @@ def main():
     # Initialize bot
     bot = TradingBot()
 
-    # Execute based on mode
-    if args.mode == 'scheduled':
-        bot.start_scheduled_bot()
-    elif args.mode == 'once':
-        bot.run_full_cycle_once()
-    elif args.mode == 'sync':
-        bot.run_data_sync()
-    elif args.mode == 'select':
-        bot.run_strategy_selection()
-    elif args.mode == 'trade':
-        bot.run_trading_session()
-    elif args.mode == 'cleanup':
-        bot.run_session_cleanup()
+    # PID file management for scheduled mode
+    pid_file = Path("bot.pid")
+
+    try:
+        # Save PID when starting in scheduled mode
+        if args.mode == 'scheduled':
+            pid_file.write_text(str(os.getpid()))
+            logger.info(f"PID {os.getpid()} written to {pid_file}")
+
+        # Execute based on mode
+        if args.mode == 'scheduled':
+            bot.start_scheduled_bot()
+        elif args.mode == 'once':
+            bot.run_full_cycle_once()
+        elif args.mode == 'sync':
+            bot.run_data_sync()
+        elif args.mode == 'select':
+            bot.run_strategy_selection()
+        elif args.mode == 'trade':
+            bot.run_trading_session()
+        elif args.mode == 'cleanup':
+            bot.run_session_cleanup()
+
+    finally:
+        # Clean up PID file
+        if args.mode == 'scheduled' and pid_file.exists():
+            pid_file.unlink(missing_ok=True)
+            logger.info("PID file removed")
 
 
 if __name__ == "__main__":

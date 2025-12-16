@@ -33,11 +33,36 @@ class DatabaseManager:
         if self.conn:
             self.conn.close()
 
+    def get_readonly_connection(self):
+        """
+        Get read-only database connection for dashboard queries.
+
+        Returns:
+            SQLite connection in read-only mode
+        """
+        import sqlite3
+        try:
+            conn = sqlite3.connect(
+                f"file:{self.db_path}?mode=ro",
+                uri=True,
+                timeout=10.0
+            )
+            conn.row_factory = sqlite3.Row
+            return conn
+        except sqlite3.OperationalError:
+            # Fallback to regular connection if read-only fails
+            conn = sqlite3.connect(str(self.db_path), timeout=10.0)
+            conn.row_factory = sqlite3.Row
+            return conn
+
     def initialize_database(self):
         """Create all required tables."""
         print(f"Initializing database at {self.db_path}...")
 
         self.connect()
+
+        # Enable WAL mode for concurrent read/write access
+        self.conn.execute("PRAGMA journal_mode=WAL")
 
         # Create strategy_pool table
         self.conn.execute("""
