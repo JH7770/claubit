@@ -1,6 +1,6 @@
 # US Market Volatility Hunter
 
-고배율 레버리지 단타 매매 봇 - **Phase 3 구현 완료** ✅
+고배율 레버리지 단타 매매 봇 - **전체 구현 완료** ✅
 
 ## 프로젝트 개요
 
@@ -8,9 +8,132 @@
 
 **핵심 철학:** "Static Strategy is Dead" - 고정된 전략이 아닌, 매일 백테스팅을 통해 검증된 '오늘의 챔피언 전략'을 선출하여 운용하는 메타 전략 시스템.
 
-## Phase 3 완료 사항 (NEW!)
+## 🎯 시스템 아키텍처
 
-### ✅ 구현된 기능
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Streamlit Dashboard                        │
+│  (Real-time Monitoring & Control Interface)                 │
+│  - Bot Control (Start/Stop/Restart)                         │
+│  - Performance Monitoring                                    │
+│  - Strategy Analysis                                         │
+│  - Historical Data Visualization                             │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│                Trading Bot Orchestrator                      │
+│                   (main_bot.py)                              │
+│                                                              │
+│  Daily Workflow:                                             │
+│  20:30 KST → Data Sync                                       │
+│  21:30 KST → Strategy Selection (Daily Champion)            │
+│  22:30 KST → Trading Session (Paper/Live)                   │
+│  01:00 KST → Cleanup & Daily Report                         │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+    ┌──────────────┼──────────────┐
+    │              │              │
+┌───▼───┐    ┌────▼────┐    ┌───▼────┐
+│Selector│    │ Paper   │    │Executor│
+│(Meta-  │    │Trader   │    │ (Live  │
+│Strategy│    │(Virtual)│    │Trading)│
+└───┬───┘    └────┬────┘    └───┬────┘
+    │             │              │
+    └─────────────┼──────────────┘
+                  │
+         ┌────────▼────────┐
+         │   Backtester    │
+         │   (Vectorized)  │
+         └────────┬────────┘
+                  │
+         ┌────────▼────────┐
+         │   3 Strategies  │
+         │  ST-01, 02, 03  │
+         └────────┬────────┘
+                  │
+      ┌───────────┼───────────┐
+      │           │           │
+  ┌───▼──┐   ┌───▼──┐   ┌───▼──┐
+  │Data  │   │ DB   │   │Telegram│
+  │(CCXT)│   │(SQLite)   │Notifier│
+  └──────┘   └──────┘   └────────┘
+```
+
+## Phase 4 완료 사항 (NEW! 🎉)
+
+### ✅ Streamlit 대시보드 & 시스템 통합
+
+1. **실시간 모니터링 대시보드** (`dashboard/pages/1_📊_Dashboard.py`)
+   - 봇 상태 모니터링 (Running/Stopped)
+   - **봇 제어**: Start, Stop, Restart 버튼
+   - 실시간 성과 지표 (Balance, PNL, Win Rate)
+   - 24시간 Equity Curve 차트
+   - 현재 포지션 추적
+   - 최근 거래 내역 (Last 10)
+   - 시스템 헬스 (CPU, Memory, Uptime)
+   - 30초 자동 새로고침
+
+2. **오늘의 전략 페이지** (`dashboard/pages/2_🎯_Today_Strategy.py`)
+   - 챔피언 전략 카드 (Score, Rank)
+   - 성과 메트릭 그리드 (Return, Win Rate, Profit Factor, Sharpe, MDD)
+   - 적용된 파라미터 테이블
+   - 전략 랭킹 비교 (Top 10 Bar Chart)
+   - 멀티 메트릭 레이더 차트
+   - CSV 다운로드
+
+3. **히스토리 & 분석 페이지** (`dashboard/pages/3_📈_History.py`)
+   - 고급 필터링 (Date Range, Symbol, Strategy)
+   - 누적 수익률 차트
+   - 일별 PNL Bar Chart
+   - Exit Reason 분포 (Pie Chart)
+   - 페이지네이션 거래 로그 (50개/페이지)
+   - 추가 분석 (Trade Duration, PNL Distribution, Strategy Breakdown)
+   - CSV 다운로드
+
+4. **최적화 뷰어 페이지** (`dashboard/pages/4_⚙️_Optimization.py`)
+   - Optimization Run 선택기
+   - Best Parameters 표시
+   - 파라미터 탐색 (Contour Plot)
+   - Score vs Parameter 시각화
+   - 상세 백테스트 결과 테이블
+   - CSV 다운로드
+
+5. **유틸리티 모듈** (`dashboard/utils/`)
+   - **data_loader.py**: 데이터베이스 쿼리 레이어 (캐싱, Read-only 연결)
+   - **bot_controller.py**: 봇 프로세스 관리 (PID 기반, Start/Stop/Status)
+   - **formatters.py**: 데이터 포매팅 헬퍼 (Currency, Percentage, Timestamp)
+
+6. **컴포넌트 모듈** (`dashboard/components/`)
+   - **charts.py**: 9가지 Plotly 차트 (Equity Curve, Bar, Radar, Contour, Pie 등)
+   - **metrics.py**: 메트릭 카드 컴포넌트
+   - **tables.py**: 테이블 포맷터
+
+7. **시스템 통합 개선**
+   - 데이터베이스 WAL 모드 활성화 (동시 읽기/쓰기 지원)
+   - Read-only 연결 메서드 추가
+   - 봇 Graceful Shutdown (SIGTERM/SIGINT 핸들러)
+   - PID 파일 관리 (프로세스 추적)
+
+### 🚀 대시보드 실행 방법
+
+```bash
+# 대시보드 시작 (별도 터미널)
+streamlit run dashboard/app.py
+
+# 브라우저에서 자동으로 열림: http://localhost:8501
+```
+
+**대시보드에서 할 수 있는 작업:**
+- ✅ 봇 시작/중지/재시작
+- ✅ 실시간 성과 모니터링
+- ✅ 오늘의 전략 확인
+- ✅ 과거 거래 분석
+- ✅ 최적화 결과 시각화
+- ✅ CSV 데이터 다운로드
+
+## Phase 3 완료 사항
+
+### ✅ 메타 전략 시스템 & 페이퍼 트레이딩
 
 1. **일별 전략 선정기** (`modules/selector.py`)
    - 메타 전략 선정 프로세스 자동화
@@ -39,151 +162,40 @@
    - **01:00+ KST**: 포지션 정리 및 일일 리포트
    - APScheduler 통합 (자동 스케줄링)
    - 명령줄 인터페이스 지원
-
-4. **데이터베이스 확장**
-   - `paper_trading` 플래그 추가 (trade_history 테이블)
-   - 페이퍼/라이브 거래 구분 기록
-
-5. **설정 확장** (`config/config.py`)
-   - 전략 선정 모드 설정 (quick/comprehensive)
-   - 페이퍼 트레이딩 설정 (초기 잔고, 폴링 간격 등)
-   - 일일 최대 손실 퍼센트 설정
-
-6. **테스트 및 예제**
-   - Phase 3 통합 테스트 (`tests/test_phase3.py`)
-     - 15개 테스트 케이스
-     - 전략 선정기 및 페이퍼 트레이더 검증
-   - 일별 전략 선정 예제 (`examples/example_daily_selection_phase3.py`)
-   - 페이퍼 트레이딩 예제 (`examples/example_paper_trading_phase3.py`)
-
-### 🚀 사용 방법 (Phase 3)
-
-#### 전략 선정 (수동)
-```bash
-# Quick 모드로 전략 선정
-python -m modules.selector
-
-# 또는 예제 스크립트 실행
-python examples/example_daily_selection_phase3.py
-```
-
-#### 페이퍼 트레이딩 (수동)
-```bash
-# 페이퍼 트레이딩 테스트
-python examples/example_paper_trading_phase3.py
-```
-
-#### 전체 봇 실행
-```bash
-# 전체 사이클 1회 실행 (테스트용)
-python main_bot.py --mode once
-
-# 개별 태스크 실행
-python main_bot.py --mode sync      # 데이터 동기화만
-python main_bot.py --mode select    # 전략 선정만
-python main_bot.py --mode trade     # 트레이딩 세션만
-python main_bot.py --mode cleanup   # 정리만
-
-# 스케줄러 모드 (자동 실행)
-python main_bot.py --mode scheduled
-```
-
-#### 설정 (.env 파일)
-```bash
-# Phase 3 추가 설정
-SELECTOR_MODE=quick                    # quick 또는 comprehensive
-SELECTOR_LOOKBACK_DAYS=7               # 백테스팅 기간
-SELECTOR_MIN_TRADES=10                 # 최소 거래 수
-PAPER_TRADING_INITIAL_BALANCE=10000    # 페이퍼 트레이딩 초기 잔고
-PAPER_TRADING_POLL_INTERVAL=60         # 폴링 간격 (초)
-PAPER_TRADING_SESSION_DURATION=3.0     # 세션 길이 (시간)
-```
+   - Graceful Shutdown 지원
 
 ## Phase 2 완료 사항
 
-### ✅ 구현된 기능
+### ✅ 전략 & 백테스팅 엔진
 
 1. **벡터화된 백테스팅 엔진** (`modules/backtester.py`)
    - 고성능 pandas 기반 백테스팅
    - 레버리지, 수수료, 슬리피지 시뮬레이션
    - SL/TP 자동 실행 (intra-candle 시뮬레이션)
    - 종합 성과 지표 계산 (수익률, 승률, Profit Factor, MDD, Sharpe Ratio)
-   - 복합 점수 계산 (기획문서 공식 적용)
+   - 복합 점수 계산
 
 2. **3가지 핵심 전략 구현**
-   - **ST-01: Volatility Breakout** (`strategies/volatility_breakout.py`)
-     - Larry Williams 변동성 돌파 전략
-     - 파라미터: k (noise ratio), lookback_period, MA filter
-   - **ST-02: RSI + Bollinger Reversion** (`strategies/rsi_bollinger.py`)
-     - RSI와 볼린저 밴드를 활용한 평균 회귀 전략
-     - 횡보장에 최적화
-   - **ST-03: Volume Weighted MA Cross** (`strategies/volume_ma_cross.py`)
-     - 거래량 확인이 포함된 이동평균 크로스오버
-     - 신뢰도 높은 신호만 거래
+   - **ST-01: Volatility Breakout** - Larry Williams 변동성 돌파
+   - **ST-02: RSI + Bollinger Reversion** - 평균 회귀 전략
+   - **ST-03: Volume Weighted MA Cross** - 거래량 확인 MA 크로스
 
 3. **Optuna 기반 파라미터 최적화** (`modules/optimizer.py`)
-   - 베이지안 최적화를 통한 하이퍼파라미터 탐색
-   - 제약 조건 설정 (최소 거래 수, 최대 낙폭)
+   - 베이지안 최적화
+   - 제약 조건 설정
    - Grid Search 지원
-   - 최적화 결과 데이터베이스 저장
-
-4. **데이터베이스 확장**
-   - `optimization_runs` 테이블 추가
-   - 백테스트 결과 저장/조회 메서드
-   - 날짜별 최적 전략 조회
-
-5. **테스트 및 예제 스크립트**
-   - Phase 2 통합 테스트 (`tests/test_phase2.py`)
-   - 백테스팅 예제 (`examples/example_backtest.py`)
-   - 최적화 예제 (`examples/example_optimization.py`)
-   - 일별 전략 선정 시뮬레이션 (`examples/daily_strategy_selection.py`)
 
 ## Phase 1 완료 사항
 
-### ✅ 구현된 기능
+### ✅ 기반 구축
 
-1. **프로젝트 구조 설정**
-   - 모듈화된 폴더 구조 생성
-   - 설정 파일 시스템 구축
+1. **CCXT 연동** (`modules/executor.py`) - 거래소 API 통합
+2. **텔레그램 봇** (`modules/notifier.py`) - 실시간 알림 시스템
+3. **데이터 수집기** (`modules/collector.py`) - OHLCV 데이터 관리
+4. **기본 전략 클래스** (`strategies/base_strategy.py`) - 전략 인터페이스
+5. **데이터베이스** (`database/init_db.py`) - SQLite 기반 데이터 관리
 
-2. **CCXT 연동 및 주문 모듈** (`modules/executor.py`)
-   - 거래소 연동 (Binance Futures)
-   - 시장가/지정가 주문 실행
-   - 포지션 관리 (진입/청산)
-   - Stop Loss / Take Profit 설정
-   - 레버리지 설정
-   - 잔고 조회
-
-3. **텔레그램 봇 모듈** (`modules/notifier.py`)
-   - 매매 알림 (진입/청산)
-   - 일일 리포트
-   - 에러 알림
-   - 생존 신호 (Heartbeat)
-   - 전략 선정 알림
-   - 리스크 경고
-
-4. **데이터 수집기** (`modules/collector.py`)
-   - OHLCV 데이터 다운로드
-   - 과거 데이터 저장 (Parquet 형식)
-   - 데이터 업데이트
-   - 실시간 가격 조회
-   - 호가창 데이터 조회
-
-5. **기본 전략 클래스** (`strategies/base_strategy.py`)
-   - 추상 베이스 클래스 정의
-   - 시그널 생성 인터페이스
-   - 포지션 사이징
-   - SL/TP 계산
-   - 예제 전략: SMA Cross
-
-6. **데이터베이스 시스템** (`database/init_db.py`)
-   - SQLite 데이터베이스 설정
-   - 전략 풀 관리
-   - 백테스트 결과 저장
-   - 거래 내역 기록
-   - 일별 요약 통계
-
-## 설치 방법
+## 설치 및 설정
 
 ### 1. 의존성 설치
 
@@ -193,19 +205,38 @@ pip install -r requirements.txt
 
 ### 2. 환경 변수 설정
 
-`.env.example` 파일을 `.env`로 복사하고 실제 API 키를 입력하세요:
+`.env.example` 파일을 `.env`로 복사하고 설정:
 
 ```bash
 cp config/.env.example .env
 ```
 
-`.env` 파일 수정:
-```
+`.env` 파일 예시:
+```bash
+# Exchange Configuration
 EXCHANGE_NAME=binance
-API_KEY=your_actual_api_key
-API_SECRET=your_actual_api_secret
+API_KEY=your_api_key_here
+API_SECRET=your_api_secret_here
+
+# Telegram Configuration
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 TELEGRAM_CHAT_ID=your_telegram_chat_id
+
+# Trading Configuration
+TRADING_MODE=Paper                      # Paper 또는 Live
+LEVERAGE=10
+MAX_DAILY_LOSS_PERCENT=5.0
+
+# Symbols
+PRIMARY_SYMBOL=BTC/USDT
+SECONDARY_SYMBOL=ETH/USDT
+
+# Phase 3 Configuration
+SELECTOR_MODE=quick                     # quick 또는 comprehensive
+SELECTOR_LOOKBACK_DAYS=7
+PAPER_TRADING_INITIAL_BALANCE=10000
+PAPER_TRADING_POLL_INTERVAL=60
+PAPER_TRADING_SESSION_DURATION=3.0
 ```
 
 ### 3. 데이터베이스 초기화
@@ -216,127 +247,160 @@ python database/init_db.py
 
 ## 사용 방법
 
-### 데이터 수집 테스트
+### 🎯 권장 워크플로우
 
+#### 1단계: 대시보드 시작
 ```bash
-python -c "from modules.collector import DataCollector; collector = DataCollector('binance'); collector.download_historical_data('BTC/USDT', '1m', days=1)"
+# 별도 터미널에서 실행
+streamlit run dashboard/app.py
 ```
 
-### 설정 확인
+#### 2단계: 봇 실행 (두 가지 방법)
 
+**방법 A: 대시보드에서 제어**
+- 대시보드 접속 (`http://localhost:8501`)
+- "Dashboard" 페이지에서 "START BOT" 버튼 클릭
+- 실시간 모니터링
+
+**방법 B: 터미널에서 실행**
 ```bash
-python config/config.py
+# 전체 사이클 1회 실행 (테스트용)
+python main_bot.py --mode once
+
+# 스케줄러 모드 (자동 실행)
+python main_bot.py --mode scheduled
+
+# 개별 태스크 실행
+python main_bot.py --mode sync      # 데이터 동기화만
+python main_bot.py --mode select    # 전략 선정만
+python main_bot.py --mode trade     # 트레이딩 세션만
+python main_bot.py --mode cleanup   # 정리만
 ```
 
-### 데이터베이스 리셋 (모든 데이터 삭제 후 재생성)
+### 📊 대시보드 기능
+
+| 페이지 | 기능 |
+|--------|------|
+| **Home** | 전체 시스템 개요, 퀵 스탯, 설정 정보 |
+| **📊 Dashboard** | 실시간 모니터링, 봇 제어, 포지션 추적, 시스템 헬스 |
+| **🎯 Today's Strategy** | 오늘의 챔피언 전략, 성과 메트릭, 파라미터, 랭킹 |
+| **📈 History** | 과거 거래 분석, 필터링, 누적 수익, 통계 |
+| **⚙️ Optimization** | 파라미터 최적화 결과, Contour Plot, 백테스트 리포트 |
+
+### 🧪 테스트 실행
 
 ```bash
-python database/init_db.py --reset
-```
+# Phase 1 테스트
+python test_phase1.py
 
-### Phase 2 테스트 실행
-
-```bash
-# Phase 2 통합 테스트
+# Phase 2 테스트
 python tests/test_phase2.py
 
+# Phase 3 테스트
+python tests/test_phase3.py
+```
+
+### 📝 예제 스크립트
+
+```bash
 # 백테스팅 예제
 python examples/example_backtest.py
 
 # 파라미터 최적화 예제
 python examples/example_optimization.py
 
-# 일별 전략 선정 시뮬레이션
-python examples/daily_strategy_selection.py
-```
+# 일별 전략 선정 예제
+python examples/example_daily_selection_phase3.py
 
-### 백테스팅 사용 예제
-
-```python
-from modules import VectorizedBacktester
-from strategies import VolatilityBreakoutStrategy
-import pandas as pd
-
-# 데이터 로드
-df = pd.read_parquet('data/BTCUSDT_1m.parquet')
-
-# 전략 초기화
-strategy = VolatilityBreakoutStrategy(params={
-    'k': 0.5,
-    'lookback_period': 24
-})
-
-# 백테스팅 실행
-backtester = VectorizedBacktester(initial_balance=10000, leverage=10)
-results = backtester.run_backtest(df, strategy)
-
-# 결과 출력
-print(f"Total Return: {results['total_return']:.2f}%")
-print(f"Win Rate: {results['win_rate']:.2f}%")
-print(f"Composite Score: {results['score']:.2f}")
-```
-
-### 파라미터 최적화 사용 예제
-
-```python
-from modules import VectorizedBacktester, StrategyOptimizer
-from strategies import VolatilityBreakoutStrategy
-
-# 최적화 실행
-backtester = VectorizedBacktester(initial_balance=10000, leverage=10)
-optimizer = StrategyOptimizer(backtester)
-
-param_space = {
-    'k': {'type': 'float', 'low': 0.3, 'high': 0.8, 'step': 0.1},
-    'lookback_period': {'type': 'categorical', 'choices': [12, 24, 48]}
-}
-
-best_params, trials_df = optimizer.optimize_strategy(
-    strategy_class=VolatilityBreakoutStrategy,
-    df=df,
-    param_space=param_space,
-    n_trials=50,
-    objective_metric='score'
-)
-
-print(f"Best parameters: {best_params}")
+# 페이퍼 트레이딩 예제
+python examples/example_paper_trading_phase3.py
 ```
 
 ## 프로젝트 구조
 
 ```
 claubit/
-├── config/                 # 설정 파일
+├── .streamlit/             # Streamlit 설정
+│   └── config.toml
+├── dashboard/              # 📊 Phase 4: Streamlit Dashboard
 │   ├── __init__.py
+│   ├── app.py             # 메인 엔트리 포인트
+│   ├── pages/             # 멀티페이지 앱
+│   │   ├── 1_📊_Dashboard.py      # 실시간 모니터링
+│   │   ├── 2_🎯_Today_Strategy.py # 전략 표시
+│   │   ├── 3_📈_History.py        # 히스토리 분석
+│   │   └── 4_⚙️_Optimization.py   # 최적화 뷰어
+│   ├── components/        # UI 컴포넌트
+│   │   ├── charts.py      # Plotly 차트
+│   │   ├── metrics.py     # 메트릭 카드
+│   │   └── tables.py      # 테이블 포맷터
+│   └── utils/             # 유틸리티
+│       ├── data_loader.py # DB 쿼리 레이어
+│       ├── bot_controller.py # 봇 프로세스 관리
+│       └── formatters.py  # 데이터 포맷팅
+├── config/                 # 설정 파일
 │   ├── config.py          # 설정 관리
 │   └── .env.example       # 환경 변수 템플릿
-├── data/                   # OHLCV 데이터 저장
+├── data/                   # OHLCV 데이터 (Parquet)
 ├── database/               # SQLite 데이터베이스
 │   └── init_db.py         # DB 초기화 및 관리
 ├── strategies/             # 전략 클래스
-│   ├── __init__.py
 │   ├── base_strategy.py   # 기본 전략 클래스
-│   ├── volatility_breakout.py  # ST-01 전략
-│   ├── rsi_bollinger.py        # ST-02 전략
-│   └── volume_ma_cross.py      # ST-03 전략
+│   ├── volatility_breakout.py  # ST-01
+│   ├── rsi_bollinger.py        # ST-02
+│   └── volume_ma_cross.py      # ST-03
 ├── modules/                # 핵심 기능 모듈
-│   ├── __init__.py
 │   ├── collector.py       # 데이터 수집
 │   ├── executor.py        # 주문 실행
 │   ├── notifier.py        # 텔레그램 알림
 │   ├── backtester.py      # 백테스팅 엔진
-│   └── optimizer.py       # Optuna 최적화
+│   ├── optimizer.py       # Optuna 최적화
+│   ├── selector.py        # 📍 Phase 3: 일별 전략 선정
+│   └── paper_trader.py    # 📍 Phase 3: 페이퍼 트레이딩
 ├── tests/                  # 테스트 스크립트
-│   └── test_phase2.py     # Phase 2 통합 테스트
+│   ├── test_phase2.py
+│   └── test_phase3.py
 ├── examples/               # 사용 예제
-│   ├── example_backtest.py
-│   ├── example_optimization.py
-│   └── daily_strategy_selection.py
+├── main_bot.py            # 📍 Phase 3: 메인 봇 오케스트레이터
 ├── requirements.txt        # Python 의존성
 ├── 기획문서.md             # 프로젝트 기획서
 ├── STRATEGIES.md          # 전략 상세 명세
+├── CLAUDE.md              # AI 개발 가이드
+├── PHASE4_COMPLETE.md     # Phase 4 완료 문서
 └── README.md              # 프로젝트 문서
 ```
+
+## 주요 기능
+
+### 🤖 자동화된 일일 워크플로우
+- 데이터 자동 동기화 (20:30 KST)
+- AI 기반 전략 선정 (21:30 KST)
+- 자동 트레이딩 실행 (22:30-01:00 KST)
+- 일일 리포트 생성 (01:00+ KST)
+
+### 📊 실시간 모니터링
+- 웹 기반 대시보드
+- 봇 원클릭 제어
+- 실시간 성과 추적
+- 시스템 헬스 모니터링
+
+### 🎯 메타 전략 시스템
+- 매일 최적 전략 자동 선정
+- 9가지 전략 변형 테스트
+- 복합 점수 기반 랭킹
+- Quick/Comprehensive 모드
+
+### 💼 리스크 관리
+- 자동 Stop Loss / Take Profit
+- 서킷 브레이커 (일일 최대 손실)
+- 레버리지 제어
+- 포지션 사이징
+
+### 📱 텔레그램 알림
+- 거래 진입/청산 알림
+- 일일 성과 리포트
+- 에러 및 경고 알림
+- 생존 신호 (Heartbeat)
 
 ## 개발 로드맵
 
@@ -348,30 +412,125 @@ claubit/
   - 데이터베이스 시스템
 
 - [x] **Phase 2: 전략 및 백테스팅** ✅
-  - 대표 전략 3종 구현 (ST-01, ST-02, ST-03)
+  - 대표 전략 3종 구현
   - Vectorized Backtesting 엔진
-  - Optuna 연동 및 파라미터 최적화
+  - Optuna 파라미터 최적화
   - 테스트 및 예제 스크립트
 
-- [ ] **Phase 3: Meta-Strategy 로직** (다음 단계)
-  - Daily Selector (오늘의 전략 선정 자동화)
+- [x] **Phase 3: 메타 전략 & 페이퍼 트레이딩** ✅
+  - Daily Selector (전략 선정 자동화)
   - Paper Trading 시뮬레이터
-  - 전략 성과 비교 및 랭킹
+  - 메인 봇 오케스트레이터
+  - 자동화된 워크플로우
 
-- [ ] **Phase 4: Streamlit 대시보드**
+- [x] **Phase 4: Streamlit 대시보드** ✅
   - 실시간 모니터링 UI
-  - 백테스팅 결과 시각화
+  - 봇 제어 인터페이스
+  - 성과 시각화
   - 최적화 결과 분석 도구
-  - 시스템 제어 인터페이스
+
+## 성능 특징
+
+### ⚡ 고속 백테스팅
+- Pandas 벡터화 연산
+- 10만 캔들 < 1초 처리
+- 병렬 최적화 지원
+
+### 💾 효율적인 데이터 관리
+- Parquet 압축 저장
+- SQLite WAL 모드 (동시 접근)
+- 캐싱 시스템 (Streamlit)
+
+### 🔒 안전성
+- Paper Trading 우선 테스트
+- 서킷 브레이커
+- Graceful Shutdown
+- 에러 복구 메커니즘
+
+## 기술 스택
+
+| 카테고리 | 기술 |
+|----------|------|
+| **Language** | Python 3.9+ |
+| **Exchange API** | CCXT |
+| **Data Processing** | Pandas, NumPy |
+| **Database** | SQLite (WAL mode) |
+| **Optimization** | Optuna |
+| **Visualization** | Plotly, Streamlit |
+| **Scheduling** | APScheduler |
+| **Notification** | python-telegram-bot |
+| **Configuration** | python-dotenv |
 
 ## 주의사항
 
-⚠️ **실제 거래 전 반드시 Paper Trading으로 충분히 테스트하세요!**
+### ⚠️ 실거래 전 필독
 
-- 현재는 Phase 1 단계로 기본 모듈만 구현되었습니다.
-- 실제 거래는 Phase 4 완료 후 진행하는 것을 권장합니다.
-- API 키는 절대 공개하지 마세요.
+1. **Paper Trading 테스트 필수**
+   - 최소 1주일 이상 Paper Trading으로 검증
+   - 다양한 시장 상황에서 테스트
+   - 모든 기능이 정상 작동하는지 확인
+
+2. **리스크 관리**
+   - 초기에는 소액으로 시작
+   - 일일 최대 손실 한도 설정 (`MAX_DAILY_LOSS_PERCENT`)
+   - 과도한 레버리지 지양
+   - 포트폴리오의 일부만 투자
+
+3. **보안**
+   - API 키 절대 공개 금지
+   - `.env` 파일 git ignore 확인
+   - Read-only API 권한 사용 권장 (테스트 시)
+   - 2FA 활성화
+
+4. **모니터링**
+   - 대시보드로 실시간 모니터링
+   - 텔레그램 알림 설정
+   - 정기적인 로그 확인
+   - 서킷 브레이커 동작 확인
+
+5. **법적 책임**
+   - 이 프로젝트는 교육 목적입니다
+   - 실거래로 인한 손실은 사용자 책임
+   - 해당 지역의 금융 규제 확인
+
+## 문제 해결
+
+### 대시보드가 실행되지 않는 경우
+```bash
+# Streamlit 재설치
+pip install --upgrade streamlit streamlit-autorefresh
+
+# 포트 변경
+streamlit run dashboard/app.py --server.port 8502
+```
+
+### 봇이 시작되지 않는 경우
+```bash
+# 설정 확인
+python config/config.py
+
+# 데이터베이스 리셋
+python database/init_db.py --reset
+
+# 로그 확인
+python main_bot.py --mode once  # 터미널에서 직접 실행
+```
+
+### 데이터베이스 락 오류
+```bash
+# WAL 모드 확인
+python -c "from database.init_db import DatabaseManager; db = DatabaseManager(); db.initialize_database()"
+```
+
+## 기여 및 지원
+
+- GitHub Issues: 버그 리포트 및 기능 제안
+- 개인 프로젝트로 운영 중
 
 ## 라이선스
 
-개인 프로젝트용
+개인 프로젝트용 - 상업적 사용 제한
+
+---
+
+**⚡ 개발 완료!** 모든 Phase가 구현되었습니다. Paper Trading으로 충분히 테스트한 후 실거래를 시작하세요!
