@@ -89,6 +89,7 @@ class DatabaseManager:
                 strategy_id INTEGER,
                 strategy_name TEXT,
                 exit_reason TEXT,
+                paper_trading BOOLEAN DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (strategy_id) REFERENCES strategy_pool(id)
             )
@@ -250,8 +251,8 @@ class DatabaseManager:
         self.conn.execute("""
             INSERT INTO trade_history
             (timestamp, symbol, side, entry_price, exit_price, amount, leverage,
-             pnl, pnl_percent, strategy_name, exit_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             pnl, pnl_percent, strategy_name, exit_reason, paper_trading)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trade_data.get('timestamp', datetime.now()),
             trade_data['symbol'],
@@ -263,7 +264,8 @@ class DatabaseManager:
             trade_data['pnl'],
             trade_data['pnl_percent'],
             trade_data.get('strategy_name', 'Unknown'),
-            trade_data.get('exit_reason', 'Manual')
+            trade_data.get('exit_reason', 'Manual'),
+            trade_data.get('paper_trading', False)
         ))
         self.conn.commit()
         self.close()

@@ -16,8 +16,11 @@ python-dotenv>=1.0.0
 # Database (SQLite is built-in, but we can use SQLAlchemy for ORM if needed)
 # sqlalchemy>=2.0.0
 
-# Optimization (for later phases)
+# Optimization
 optuna>=3.0.0
+
+# Scheduling (Phase 3)
+APScheduler>=3.10.0
 
 # Dashboard (for Phase 4)
 streamlit>=1.28.0

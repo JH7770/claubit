@@ -30,8 +30,33 @@ python config/config.py
 # Run Phase 1 integration tests
 python test_phase1.py
 
+# Run Phase 2 integration tests
+python tests/test_phase2.py
+
+# Run Phase 3 integration tests
+python tests/test_phase3.py
+
 # Test data collection
 python -c "from modules.collector import DataCollector; collector = DataCollector('binance'); collector.download_historical_data('BTC/USDT', '1m', days=1)"
+```
+
+### Phase 3: Running the Bot
+```bash
+# Run full daily cycle once (for testing)
+python main_bot.py --mode once
+
+# Run individual tasks
+python main_bot.py --mode sync      # Data sync only
+python main_bot.py --mode select    # Strategy selection only
+python main_bot.py --mode trade     # Trading session only
+python main_bot.py --mode cleanup   # Cleanup only
+
+# Start scheduled bot (runs daily workflow automatically)
+python main_bot.py --mode scheduled
+
+# Run example scripts
+python examples/example_daily_selection_phase3.py
+python examples/example_paper_trading_phase3.py
 ```
 
 ### Configuration
@@ -53,6 +78,10 @@ The codebase follows a modular architecture with clear separation of concerns:
 - `collector.py`: CCXT-based data collection, downloads/stores OHLCV data in Parquet format
 - `executor.py`: Order execution and position management via CCXT
 - `notifier.py`: Telegram bot integration for trade alerts, daily reports, errors, and heartbeats
+- `backtester.py` (Phase 2): Vectorized backtesting engine with leverage/commission/slippage simulation
+- `optimizer.py` (Phase 2): Optuna-based hyperparameter optimization
+- `selector.py` (Phase 3): Daily strategy selector with quick/comprehensive modes
+- `paper_trader.py` (Phase 3): Paper trading simulator for real-time strategy validation
 
 **`strategies/`** - Trading strategy implementations:
 - `base_strategy.py`: Abstract base class defining strategy interface (generate_signals, calculate_position_size, calculate_sl_tp)
@@ -63,7 +92,9 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 **`database/`** - SQLite database layer:
 - `init_db.py`: DatabaseManager handles schema creation and operations
-- Tables: strategy_pool, backtest_results, trade_history, daily_summary
+- Tables: strategy_pool, backtest_results, trade_history (with paper_trading flag), daily_summary, optimization_runs, bot_status, positions
+
+**`main_bot.py`** (Phase 3): Main orchestrator that coordinates daily workflow with APScheduler
 
 **`data/`** - OHLCV data storage (Parquet files)
 
@@ -75,9 +106,9 @@ The codebase follows a modular architecture with clear separation of concerns:
    - Score strategies using composite metric: (TotalReturn × 0.4) + (WinRate × 0.3) + (1/|MDD| × 0.3)
    - Select best strategy/params as "Today_Config"
 
-2. **Daily Trading Cycle** (as per 기획문서.md):
-   - 20:30-21:30: Data synchronization
-   - 21:30-22:20: Daily strategy selection via backtesting
+2. **Daily Trading Cycle** (as per 기획문서.md - AUTOMATED IN PHASE 3):
+   - 20:30-21:30: Data synchronization (main_bot.py: run_data_sync)
+   - 21:30-22:20: Daily strategy selection via backtesting (main_bot.py: run_strategy_selection)
    - 22:30-01:00: Live trading session (US market open)
    - 01:00+: Position cleanup and daily report
 
@@ -105,17 +136,36 @@ The codebase follows a modular architecture with clear separation of concerns:
 
 ## Development Phases
 
-Currently at Phase 1 completion (foundation modules implemented). See README.md for phase breakdown:
-- Phase 1: Foundation modules (CCXT, data collection, basic strategy, database, Telegram)
-- Phase 2: 3 representative strategies + vectorized backtesting engine + Optuna integration
-- Phase 3: Meta-strategy selector logic + paper trading simulator
-- Phase 4: Streamlit dashboard + full system integration
+**Currently at Phase 3 completion**. See README.md for full phase breakdown:
+- ✅ Phase 1: Foundation modules (CCXT, data collection, basic strategy, database, Telegram)
+- ✅ Phase 2: 3 representative strategies + vectorized backtesting engine + Optuna integration
+- ✅ **Phase 3: Meta-strategy selector logic + paper trading simulator + automated workflow**
+- 📋 Phase 4: Streamlit dashboard + full system integration
 
 ## Testing Approach
 
-Phase 1 test script (test_phase1.py) validates:
+**Phase 1** (test_phase1.py):
 1. Configuration loading and validation
 2. Database initialization and CRUD operations
+3. Strategy signal generation
+4. Data collector functionality
+5. Telegram notifier structure
+
+**Phase 2** (tests/test_phase2.py):
+1. Backtester functionality and metrics calculation
+2. Strategy implementations (all 3 strategies)
+3. Optuna optimizer with constraint handling
+4. Database operations for backtest results
+
+**Phase 3** (tests/test_phase3.py):
+1. DailyStrategySelector initialization and operation
+2. Quick/comprehensive selection modes
+3. Strategy ranking and database storage
+4. PaperTradingSimulator position management
+5. SL/TP trigger simulation
+6. Circuit breaker functionality
+7. Strategy signal execution
+8. Daily statistics tracking
 3. Strategy signal generation and position sizing
 4. Data collector functionality (with live price fetch if online)
 5. Order executor initialization (requires API credentials)

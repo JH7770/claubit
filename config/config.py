@@ -40,6 +40,17 @@ class Config:
     # Timezone
     TIMEZONE = os.getenv('TIMEZONE', 'Asia/Seoul')
 
+    # Phase 3: Daily Strategy Selector Configuration
+    SELECTOR_MODE = os.getenv('SELECTOR_MODE', 'quick')  # 'quick' or 'comprehensive'
+    SELECTOR_LOOKBACK_DAYS = int(os.getenv('SELECTOR_LOOKBACK_DAYS', 7))
+    SELECTOR_MIN_TRADES = int(os.getenv('SELECTOR_MIN_TRADES', 10))
+    SELECTOR_TIMEOUT_MINUTES = int(os.getenv('SELECTOR_TIMEOUT_MINUTES', 30))
+
+    # Phase 3: Paper Trading Configuration
+    PAPER_TRADING_INITIAL_BALANCE = float(os.getenv('PAPER_TRADING_INITIAL_BALANCE', 10000.0))
+    PAPER_TRADING_POLL_INTERVAL = int(os.getenv('PAPER_TRADING_POLL_INTERVAL', 60))
+    PAPER_TRADING_SESSION_DURATION = float(os.getenv('PAPER_TRADING_SESSION_DURATION', 3.0))
+
     @classmethod
     def is_live_mode(cls):
         """Check if bot is running in live trading mode."""
@@ -64,6 +75,9 @@ class Config:
 
         if cls.TRADING_MODE not in ['Live', 'Paper']:
             errors.append(f"Invalid TRADING_MODE: {cls.TRADING_MODE}. Must be 'Live' or 'Paper'")
+
+        if cls.SELECTOR_MODE not in ['quick', 'comprehensive']:
+            errors.append(f"Invalid SELECTOR_MODE: {cls.SELECTOR_MODE}. Must be 'quick' or 'comprehensive'")
 
         return errors
 
