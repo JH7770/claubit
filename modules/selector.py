@@ -14,7 +14,12 @@ from typing import Dict, List, Optional, Tuple
 import logging
 
 from modules.backtester import VectorizedBacktester
-from modules.optimizer import StrategyOptimizer
+from modules.optimizer import (
+    StrategyOptimizer,
+    VOLATILITY_BREAKOUT_SPACE,
+    RSI_BOLLINGER_SPACE,
+    VOLUME_MA_CROSS_SPACE
+)
 from modules.collector import DataCollector
 from modules.notifier import TelegramNotifier
 from database.init_db import DatabaseManager
@@ -83,6 +88,13 @@ class DailyStrategySelector:
             'RSI_Bollinger_Reversion': RSIBollingerReversionStrategy,
             'Volume_MA_Cross': VolumeWeightedMACrossStrategy,
             'SMA_Cross': VolatilityBreakoutStrategy  # Fallback to existing strategy
+        }
+
+        # Parameter space mapping for optimization
+        self.param_space_map = {
+            VolatilityBreakoutStrategy: VOLATILITY_BREAKOUT_SPACE,
+            RSIBollingerReversionStrategy: RSI_BOLLINGER_SPACE,
+            VolumeWeightedMACrossStrategy: VOLUME_MA_CROSS_SPACE
         }
 
         logger.info("DailyStrategySelector initialized")
@@ -159,6 +171,7 @@ class DailyStrategySelector:
             result = {
                 'selected_strategy': best_result['strategy_name'],
                 'selected_params': json.loads(best_result['params']),
+                'timeframe': timeframe,
                 'score': best_result['score'],
                 'backtest_results': {
                     'total_return': best_result['total_return'],
@@ -206,10 +219,11 @@ class DailyStrategySelector:
                 df.index = pd.to_datetime(df.index)
 
                 # Check if data is recent enough
-                cutoff_date = datetime.now() - timedelta(days=days + 1)
+                # Check if data is recent enough
+                cutoff_date = pd.Timestamp.now('UTC') - timedelta(days=days + 1)
                 if df.index[-1] >= cutoff_date:
                     # Filter to requested period
-                    start_date = datetime.now() - timedelta(days=days)
+                    start_date = pd.Timestamp.now('UTC') - timedelta(days=days)
                     df = df[df.index >= start_date]
                     logger.info(f"Loaded data from local file: {data_path}")
                     return df
@@ -421,13 +435,21 @@ class DailyStrategySelector:
             logger.info(f"  [{i}/{len(unique_strategies)}] Optimizing {name}...")
 
             try:
+                # Get parameter space for this strategy
+                param_space = self.param_space_map.get(strategy_class)
+                if param_space is None:
+                    logger.error(f"    No parameter space defined for {strategy_class.__name__}")
+                    continue
+
                 # Run Optuna optimization
                 best_params, trials_df = self.optimizer.optimize_strategy(
                     strategy_class=strategy_class,
                     df=df,
+                    param_space=param_space,
                     n_trials=n_trials,
                     objective_metric='score',
-                    min_trades=self.config.SELECTOR_MIN_TRADES
+                    min_trades=self.config.SELECTOR_MIN_TRADES,
+                    show_progress=False  # Disable progress bar for cleaner logs
                 )
 
                 if best_params is None:

@@ -6,6 +6,9 @@ Creates the SQLite database and all required tables.
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+import json
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 
 class DatabaseManager:
@@ -21,6 +24,7 @@ class DatabaseManager:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(exist_ok=True)
         self.conn = None
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="db_writer")
 
     def connect(self):
         """Establish database connection."""
@@ -32,6 +36,18 @@ class DatabaseManager:
         """Close database connection."""
         if self.conn:
             self.conn.close()
+
+    def get_connection(self):
+        """
+        Get a new database connection.
+        Caller is responsible for closing the connection.
+
+        Returns:
+            SQLite connection
+        """
+        conn = sqlite3.connect(str(self.db_path), timeout=10.0)
+        conn.row_factory = sqlite3.Row
+        return conn
 
     def get_readonly_connection(self):
         """
@@ -171,6 +187,49 @@ class DatabaseManager:
             )
         """)
 
+        # Migrate bot_status table: add new columns if they don't exist
+        cursor = self.conn.execute("PRAGMA table_info(bot_status)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+
+        if 'current_task' not in existing_columns:
+            self.conn.execute("ALTER TABLE bot_status ADD COLUMN current_task TEXT")
+        if 'task_start_time' not in existing_columns:
+            self.conn.execute("ALTER TABLE bot_status ADD COLUMN task_start_time TIMESTAMP")
+        if 'next_task' not in existing_columns:
+            self.conn.execute("ALTER TABLE bot_status ADD COLUMN next_task TEXT")
+        if 'next_task_time' not in existing_columns:
+            self.conn.execute("ALTER TABLE bot_status ADD COLUMN next_task_time TIMESTAMP")
+
+        # Create activity_log table (for tracking bot activity events)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                event_type TEXT NOT NULL,
+                event_category TEXT,
+                task_name TEXT,
+                message TEXT NOT NULL,
+                details TEXT,
+                severity TEXT DEFAULT 'INFO',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Create trading_signals table (for tracking real-time signals)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS trading_signals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                symbol TEXT NOT NULL,
+                strategy_name TEXT NOT NULL,
+                signal INTEGER NOT NULL,
+                current_price REAL NOT NULL,
+                indicators TEXT,
+                position_opened BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Create optimization_runs table (for tracking Optuna optimization results)
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS optimization_runs (
@@ -207,6 +266,26 @@ class DatabaseManager:
         self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_daily_date
             ON daily_summary(date)
+        """)
+
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_timestamp
+            ON activity_log(timestamp)
+        """)
+
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_activity_category
+            ON activity_log(event_category)
+        """)
+
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_signals_timestamp
+            ON trading_signals(timestamp)
+        """)
+
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_signals_symbol
+            ON trading_signals(symbol)
         """)
 
         self.conn.commit()
@@ -466,6 +545,196 @@ class DatabaseManager:
         if result:
             return dict(result)
         return None
+
+    def update_bot_status(self, status_data: dict):
+        """
+        Update or insert bot status (async write).
+
+        Args:
+            status_data: Dictionary with bot status fields:
+                - status: 'running' | 'stopped'
+                - mode: 'scheduled' | 'once'
+                - current_task: 'idle' | 'data_sync' | 'strategy_selection' | 'trading' | 'cleanup'
+                - task_start_time: datetime
+                - current_balance: float
+                - daily_pnl: float
+                - active_positions: int
+                - next_task: str
+                - next_task_time: datetime
+        """
+        def _write():
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            try:
+                # Check if row exists
+                cursor = conn.execute("SELECT id FROM bot_status LIMIT 1")
+                row = cursor.fetchone()
+
+                if row:
+                    # Update existing row
+                    update_fields = []
+                    values = []
+                    for key, value in status_data.items():
+                        update_fields.append(f"{key} = ?")
+                        values.append(value)
+
+                    update_fields.append("updated_at = ?")
+                    values.append(datetime.now())
+
+                    values.append(row[0])
+
+                    conn.execute(
+                        f"UPDATE bot_status SET {', '.join(update_fields)} WHERE id = ?",
+                        values
+                    )
+                else:
+                    # Insert new row
+                    fields = list(status_data.keys())
+                    placeholders = ', '.join(['?' for _ in fields])
+                    conn.execute(
+                        f"INSERT INTO bot_status ({', '.join(fields)}) VALUES ({placeholders})",
+                        [status_data[f] for f in fields]
+                    )
+
+                conn.commit()
+            finally:
+                conn.close()
+
+        # Submit to thread pool for async execution
+        self._executor.submit(_write)
+
+    def log_activity(self, event_type: str, message: str, **kwargs):
+        """
+        Log bot activity event (async write).
+
+        Args:
+            event_type: 'task_start', 'task_end', 'signal', 'position_open', 'position_close', 'error', 'info'
+            message: Human-readable message
+            kwargs:
+                - event_category: 'bot', 'trading', 'strategy', 'system'
+                - task_name: str
+                - details: dict (will be JSON encoded)
+                - severity: 'INFO', 'SUCCESS', 'WARNING', 'ERROR'
+        """
+        def _write():
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            try:
+                details = kwargs.get('details')
+                if isinstance(details, dict):
+                    details = json.dumps(details)
+
+                conn.execute("""
+                    INSERT INTO activity_log
+                    (timestamp, event_type, event_category, task_name, message, details, severity)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    datetime.now(),
+                    event_type,
+                    kwargs.get('event_category', 'bot'),
+                    kwargs.get('task_name'),
+                    message,
+                    details,
+                    kwargs.get('severity', 'INFO')
+                ))
+                conn.commit()
+            finally:
+                conn.close()
+
+        # Submit to thread pool for async execution
+        self._executor.submit(_write)
+
+    def log_trading_signal(self, signal_data: dict):
+        """
+        Log trading signal (async write).
+
+        Args:
+            signal_data: Dictionary with signal fields:
+                - symbol: str
+                - strategy_name: str
+                - signal: int (1=long, -1=short, 0=hold)
+                - current_price: float
+                - indicators: dict (will be JSON encoded)
+                - position_opened: bool
+        """
+        def _write():
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            try:
+                indicators = signal_data.get('indicators')
+                if isinstance(indicators, dict):
+                    indicators = json.dumps(indicators)
+
+                conn.execute("""
+                    INSERT INTO trading_signals
+                    (timestamp, symbol, strategy_name, signal, current_price, indicators, position_opened)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    datetime.now(),
+                    signal_data['symbol'],
+                    signal_data['strategy_name'],
+                    signal_data['signal'],
+                    signal_data['current_price'],
+                    indicators,
+                    signal_data.get('position_opened', False)
+                ))
+                conn.commit()
+            finally:
+                conn.close()
+
+        # Submit to thread pool for async execution
+        self._executor.submit(_write)
+
+    def get_recent_activity(self, limit: int = 50, event_category: Optional[str] = None):
+        """
+        Get recent activity log entries.
+
+        Args:
+            limit: Maximum number of entries to retrieve
+            event_category: Filter by category ('bot', 'trading', 'strategy', 'system')
+
+        Returns:
+            List of activity log dictionaries
+        """
+        self.connect()
+        query = "SELECT * FROM activity_log"
+        params = []
+
+        if event_category:
+            query += " WHERE event_category = ?"
+            params.append(event_category)
+
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        cursor = self.conn.execute(query, params)
+        results = [dict(row) for row in cursor.fetchall()]
+        self.close()
+        return results
+
+    def get_latest_signals(self, symbol: Optional[str] = None, limit: int = 10):
+        """
+        Get latest trading signals.
+
+        Args:
+            symbol: Filter by symbol (optional)
+            limit: Maximum number of signals to retrieve
+
+        Returns:
+            List of signal dictionaries
+        """
+        self.connect()
+        query = "SELECT * FROM trading_signals"
+        params = []
+
+        if symbol:
+            query += " WHERE symbol = ?"
+            params.append(symbol)
+
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        cursor = self.conn.execute(query, params)
+        results = [dict(row) for row in cursor.fetchall()]
+        self.close()
+        return results
 
     def reset_database(self):
         """Drop all tables and recreate them. WARNING: This deletes all data!"""

@@ -78,6 +78,24 @@ class TableFormatter:
         # Clean up column names
         df_display.columns = [col.replace('_', ' ').title() for col in df_display.columns]
 
+        # Translate columns to Korean
+        column_map = {
+            'Time': '시간',
+            'Side': '사이드',
+            'Entry Price': '진입가',
+            'Exit Price': '종료가',
+            'PNL': 'PNL',
+            'PNL %': 'PNL %',
+            'Exit Reason': '종료 사유',
+            'Strategy Name': '전략명',
+            'Symbol': '심볼',
+            'Amount': '수량',
+            'Status': '상태',
+            'Duration Seconds': '기간(초)',
+            'Duration Minutes': '기간(분)'
+        }
+        df_display.columns = [column_map.get(col, col) for col in df_display.columns]
+
         return df_display
 
     @staticmethod
@@ -127,6 +145,20 @@ class TableFormatter:
         # Clean up column names
         df_display.columns = [col.replace('_', ' ').title() for col in df_display.columns]
 
+        # Translate columns to Korean
+        column_map = {
+            'Rank': '순위',
+            'Strategy Name': '전략명',
+            'Score': '점수',
+            'Total Return': '총 수익률',
+            'Win Rate': '승률',
+            'Profit Factor': '수익 팩터',
+            'Sharpe Ratio': '샤프 지수',
+            'Max Drawdown': '최대 낙폭',
+            'Total Trades': '총 거래'
+        }
+        df_display.columns = [column_map.get(col, col) for col in df_display.columns]
+
         return df_display
 
     @staticmethod
@@ -167,6 +199,21 @@ class TableFormatter:
 
         # Clean up column names
         df_display.columns = [col.replace('_', ' ').title() for col in df_display.columns]
+
+        # Translate columns to Korean
+        column_map = {
+            'Symbol': '심볼',
+            'Side': '사이드',
+            'Amount': '수량',
+            'Entry Price': '진입가',
+            'Mark Price': '현재가',
+            'Unrealized Pnl': '미실현 PNL',
+            'Leverage': '레버리지',
+            'Opened At': '진입 시간',
+            'Stop Loss': '손절가',
+            'Take Profit': '익절가'
+        }
+        df_display.columns = [column_map.get(col, col) for col in df_display.columns]
 
         return df_display
 
@@ -215,6 +262,17 @@ class TableFormatter:
 
         # Clean up column names
         df_display.columns = [col.replace('_', ' ').title() for col in df_display.columns]
+
+        # Translate columns to Korean
+        column_map = {
+            'Date': '날짜',
+            'Total Pnl': '총 PNL',
+            'Win Rate': '승률',
+            'Starting Balance': '시작 잔고',
+            'Ending Balance': '종료 잔고',
+            'Total Trades': '총 거래'
+        }
+        df_display.columns = [column_map.get(col, col) for col in df_display.columns]
 
         return df_display
 
@@ -266,7 +324,7 @@ class TableFormatter:
             st.subheader(title)
 
         if df.empty:
-            st.info("No data available")
+            st.info("데이터 없음")
             return
 
         # Display formatted or raw data
@@ -280,7 +338,7 @@ class TableFormatter:
         with col2:
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Download CSV",
+                label="📥 CSV 다운로드",
                 data=csv,
                 file_name=filename,
                 mime="text/csv"

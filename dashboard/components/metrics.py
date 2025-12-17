@@ -73,7 +73,7 @@ class MetricCard:
                             st.metric(label=label, value=value)
 
     @staticmethod
-    def status_indicator(is_running: bool, label: str = "Bot Status") -> str:
+    def status_indicator(is_running: bool, label: str = "봇 상태") -> str:
         """
         Return colored status indicator.
 
@@ -85,15 +85,15 @@ class MetricCard:
             Formatted status string with emoji
         """
         if is_running:
-            return f"{label}: 🟢 Running"
+            return f"{label}: 🟢 실행 중"
         else:
-            return f"{label}: 🔴 Stopped"
+            return f"{label}: 🔴 중지됨"
 
     @staticmethod
     def display_status_badge(
         is_running: bool,
-        running_text: str = "Running",
-        stopped_text: str = "Stopped"
+        running_text: str = "실행 중",
+        stopped_text: str = "중지됨"
     ):
         """
         Display status as a colored badge.

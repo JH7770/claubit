@@ -26,7 +26,7 @@ class ChartBuilder:
         df: pd.DataFrame,
         x_col: str = 'timestamp',
         y_col: str = 'cumulative_pnl',
-        title: str = "Equity Curve",
+        title: str = "자산 곡선",
         height: int = 400
     ) -> go.Figure:
         """
@@ -46,7 +46,7 @@ class ChartBuilder:
             # Return empty chart with message
             fig = go.Figure()
             fig.add_annotation(
-                text="No data available",
+                text="데이터 없음",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=20, color="gray")
@@ -57,7 +57,10 @@ class ChartBuilder:
         # Determine fill color based on final value
         final_value = df[y_col].iloc[-1] if len(df) > 0 else 0
         fill_color = ChartBuilder.COLOR_POSITIVE if final_value >= 0 else ChartBuilder.COLOR_NEGATIVE
-        fill_color_rgba = fill_color.replace('#', 'rgba(') + ', 0.2)'  # Add transparency
+        # Convert hex to rgba properly
+        hex_clean = fill_color.lstrip('#')
+        r, g, b = int(hex_clean[0:2], 16), int(hex_clean[2:4], 16), int(hex_clean[4:6], 16)
+        fill_color_rgba = f'rgba({r}, {g}, {b}, 0.2)'
 
         fig = go.Figure()
 
@@ -74,8 +77,8 @@ class ChartBuilder:
 
         fig.update_layout(
             title=title,
-            xaxis_title="Time",
-            yaxis_title="Cumulative PNL ($)",
+            xaxis_title="시간",
+            yaxis_title="누적 PNL ($)",
             hovermode='x unified',
             template='plotly_white',
             height=height
@@ -88,7 +91,7 @@ class ChartBuilder:
         df: pd.DataFrame,
         date_col: str = 'date',
         pnl_col: str = 'total_pnl',
-        title: str = "Daily PNL",
+        title: str = "일일 PNL",
         height: int = 400
     ) -> go.Figure:
         """
@@ -107,7 +110,7 @@ class ChartBuilder:
         if df.empty:
             fig = go.Figure()
             fig.add_annotation(
-                text="No data available",
+                text="데이터 없음",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=20, color="gray")
@@ -132,7 +135,7 @@ class ChartBuilder:
 
         fig.update_layout(
             title=title,
-            xaxis_title="Date",
+            xaxis_title="날짜",
             yaxis_title="PNL ($)",
             template='plotly_white',
             height=height,
@@ -147,7 +150,7 @@ class ChartBuilder:
     @staticmethod
     def strategy_comparison_radar(
         metrics: Dict[str, float],
-        title: str = "Strategy Performance",
+        title: str = "전략 성과",
         height: int = 400
     ) -> go.Figure:
         """
@@ -164,7 +167,7 @@ class ChartBuilder:
         if not metrics:
             fig = go.Figure()
             fig.add_annotation(
-                text="No metrics available",
+                text="지표 없음",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=20, color="gray")
@@ -224,7 +227,7 @@ class ChartBuilder:
         if df.empty:
             fig = go.Figure()
             fig.add_annotation(
-                text="No optimization data available",
+                text="최적화 데이터 없음",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=20, color="gray")
@@ -289,7 +292,7 @@ class ChartBuilder:
         if df.empty:
             fig = go.Figure()
             fig.add_annotation(
-                text="No data available",
+                text="데이터 없음",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=20, color="gray")
@@ -314,7 +317,7 @@ class ChartBuilder:
     def exit_reason_pie(
         df: pd.DataFrame,
         reason_col: str = 'exit_reason',
-        title: str = "Exit Reasons Distribution",
+        title: str = "종료 사유 분포",
         height: int = 400
     ) -> go.Figure:
         """
@@ -332,7 +335,7 @@ class ChartBuilder:
         if df.empty:
             fig = go.Figure()
             fig.add_annotation(
-                text="No data available",
+                text="데이터 없음",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=20, color="gray")
@@ -364,7 +367,7 @@ class ChartBuilder:
         df: pd.DataFrame,
         strategy_col: str = 'strategy_name',
         score_col: str = 'score',
-        title: str = "Strategy Rankings",
+        title: str = "전략 순위",
         height: int = 400,
         top_n: int = 10
     ) -> go.Figure:
@@ -385,7 +388,7 @@ class ChartBuilder:
         if df.empty:
             fig = go.Figure()
             fig.add_annotation(
-                text="No data available",
+                text="데이터 없음",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=20, color="gray")
@@ -422,8 +425,8 @@ class ChartBuilder:
 
         fig.update_layout(
             title=title,
-            xaxis_title="Score",
-            yaxis_title="Strategy",
+            xaxis_title="점수",
+            yaxis_title="전략",
             template='plotly_white',
             height=height,
             showlegend=False,
@@ -437,7 +440,7 @@ class ChartBuilder:
         df: pd.DataFrame,
         trial_col: str = 'trial',
         score_col: str = 'score',
-        title: str = "Optimization Progress",
+        title: str = "최적화 진행 상황",
         height: int = 400
     ) -> go.Figure:
         """
@@ -456,7 +459,7 @@ class ChartBuilder:
         if df.empty:
             fig = go.Figure()
             fig.add_annotation(
-                text="No optimization history available",
+                text="최적화 기록 없음",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=20, color="gray")
@@ -491,8 +494,8 @@ class ChartBuilder:
 
         fig.update_layout(
             title=title,
-            xaxis_title="Trial Number",
-            yaxis_title="Score",
+            xaxis_title="시도 번호",
+            yaxis_title="점수",
             template='plotly_white',
             height=height,
             hovermode='x unified'

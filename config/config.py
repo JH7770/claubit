@@ -41,7 +41,8 @@ class Config:
     TIMEZONE = os.getenv('TIMEZONE', 'Asia/Seoul')
 
     # Phase 3: Daily Strategy Selector Configuration
-    SELECTOR_MODE = os.getenv('SELECTOR_MODE', 'quick')  # 'quick' or 'comprehensive'
+    # SELECTOR_MODE = os.getenv('SELECTOR_MODE', 'quick')  # 'quick' or 'comprehensive'
+    SELECTOR_MODE = os.getenv('SELECTOR_MODE', 'comprehensive')  # 'quick' or 'comprehensive'
     SELECTOR_LOOKBACK_DAYS = int(os.getenv('SELECTOR_LOOKBACK_DAYS', 7))
     SELECTOR_MIN_TRADES = int(os.getenv('SELECTOR_MIN_TRADES', 10))
     SELECTOR_TIMEOUT_MINUTES = int(os.getenv('SELECTOR_TIMEOUT_MINUTES', 30))

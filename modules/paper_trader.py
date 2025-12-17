@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import time
 import logging
+import json
 
 from modules.collector import DataCollector
 from modules.notifier import TelegramNotifier
@@ -205,10 +206,30 @@ class PaperTradingSimulator:
                 side=side,
                 entry_price=entry_price,
                 amount=amount,
+                leverage=self.leverage,
+                strategy=strategy_name,
                 stop_loss=stop_loss,
-                take_profit=take_profit,
-                strategy=strategy_name
+                take_profit=take_profit
             )
+
+        # Log activity
+        try:
+            self.db_manager.log_activity(
+                'position_open',
+                f'Opened {side} position for {symbol}',
+                event_category='trading',
+                details={
+                    'symbol': symbol,
+                    'side': side,
+                    'entry_price': entry_price,
+                    'amount': amount,
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit,
+                    'strategy_name': strategy_name
+                }
+            )
+        except Exception as log_err:
+            logger.warning(f"Failed to log position open: {log_err}")
 
         return position
 
@@ -301,6 +322,27 @@ class PaperTradingSimulator:
                 pnl_percent=pnl_percent,
                 exit_reason=exit_reason
             )
+
+        # Log activity
+        try:
+            severity = 'SUCCESS' if pnl > 0 else 'WARNING'
+            self.db_manager.log_activity(
+                'position_close',
+                f'Closed {pos["side"]} position for {symbol}',
+                event_category='trading',
+                severity=severity,
+                details={
+                    'symbol': symbol,
+                    'side': pos['side'],
+                    'pnl': pnl,
+                    'pnl_percent': pnl_percent,
+                    'exit_reason': exit_reason,
+                    'entry_price': pos['entry_price'],
+                    'exit_price': exit_price
+                }
+            )
+        except Exception as log_err:
+            logger.warning(f"Failed to log position close: {log_err}")
 
         # Check circuit breaker
         if self.check_circuit_breaker():
@@ -419,6 +461,7 @@ class PaperTradingSimulator:
         self,
         symbol: str,
         strategy: BaseStrategy,
+        timeframe: str = '1m',
         interval_seconds: Optional[int] = None,
         duration_hours: Optional[float] = None
     ):
@@ -428,6 +471,7 @@ class PaperTradingSimulator:
         Args:
             symbol: Trading symbol
             strategy: Strategy to trade
+            timeframe: Candle timeframe for data fetching (default: 1m)
             interval_seconds: Polling interval (default: from config)
             duration_hours: Trading session duration (default: from config)
         """
@@ -436,6 +480,7 @@ class PaperTradingSimulator:
 
         logger.info(f"Starting paper trading loop for {symbol}")
         logger.info(f"  Strategy: {strategy.__class__.__name__}")
+        logger.info(f"  Timeframe: {timeframe}")
         logger.info(f"  Interval: {interval_seconds}s")
         logger.info(f"  Duration: {duration_hours}h")
 
@@ -460,7 +505,7 @@ class PaperTradingSimulator:
                 # 3. Generate strategy signal (need recent data)
                 try:
                     # Fetch recent candles for signal generation
-                    ohlcv = self.collector.exchange.fetch_ohlcv(symbol, '1m', limit=100)
+                    ohlcv = self.collector.exchange.fetch_ohlcv(symbol, timeframe, limit=100)
                     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
                     df.set_index('timestamp', inplace=True)
@@ -469,6 +514,22 @@ class PaperTradingSimulator:
                     df_signals = strategy.generate_signals(df)
                     if len(df_signals) > 0:
                         signal = df_signals['signal'].iloc[-1]
+
+                        # Extract indicator values for logging
+                        indicators = self._extract_indicators(df_signals.iloc[-1])
+
+                        # Log signal to database
+                        try:
+                            self.db_manager.log_trading_signal({
+                                'symbol': symbol,
+                                'strategy_name': strategy.__class__.__name__,
+                                'signal': int(signal),
+                                'current_price': current_price,
+                                'indicators': indicators,
+                                'position_opened': False  # Will update if position is opened
+                            })
+                        except Exception as log_err:
+                            logger.warning(f"Failed to log signal: {log_err}")
                     else:
                         signal = 0
 
@@ -624,11 +685,37 @@ class PaperTradingSimulator:
         if self.notifier:
             self.notifier.send_daily_report(
                 date=date,
-                total_pnl=stats['total_pnl'],
                 total_trades=stats['total_trades'],
+                winning_trades=stats['winning_trades'],
+                losing_trades=stats['losing_trades'],
+                total_pnl=stats['total_pnl'],
                 win_rate=stats['win_rate'],
-                final_balance=self.balance
+                strategy_used=summary_data['strategy_used'],
+                balance=self.balance
             )
+
+    # Helper methods
+    def _extract_indicators(self, signal_row: pd.Series) -> dict:
+        """
+        Extract indicator values from signal row for logging.
+
+        Args:
+            signal_row: DataFrame row with signal and indicators
+
+        Returns:
+            Dictionary with indicator values
+        """
+        indicators = {}
+        # Get all columns except 'signal'
+        indicator_columns = [col for col in signal_row.index if col not in ['signal']]
+        for col in indicator_columns:
+            value = signal_row[col]
+            # Convert to native Python types for JSON serialization
+            if pd.notna(value):
+                indicators[col] = float(value) if isinstance(value, (np.integer, np.floating)) else value
+            else:
+                indicators[col] = None
+        return indicators
 
     # Reporting
     def print_status(self):

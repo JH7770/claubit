@@ -338,6 +338,92 @@ class TelegramNotifier:
 
         return self.send_sync(message)
 
+    def send_trading_session_start(
+        self,
+        trading_mode: str,
+        strategy_name: str,
+        strategy_params: Dict,
+        symbol: str,
+        session_duration_hours: float,
+        initial_balance: float,
+        leverage: int,
+        max_loss_percent: float,
+        backtest_results: Optional[Dict] = None,
+        timeframe: str = '1m'
+    ) -> bool:
+        """
+        Send trading session start notification.
+
+        Args:
+            trading_mode: 'Paper' or 'Live'
+            strategy_name: Name of strategy being used
+            strategy_params: Strategy parameters dict
+            symbol: Trading symbol (e.g., 'BTC/USDT')
+            session_duration_hours: Duration of trading session
+            initial_balance: Starting balance
+            leverage: Leverage multiplier
+            max_loss_percent: Maximum daily loss percentage
+            backtest_results: Optional backtest metrics
+            timeframe: Candle timeframe (default: 1m)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        from datetime import timedelta
+
+        # Emoji based on mode
+        mode_emoji = "📝" if trading_mode.lower() == 'paper' else "💰"
+        mode_text = f"{trading_mode.upper()} TRADING {mode_emoji}"
+
+        # Calculate session end time
+        start_time = datetime.now()
+        end_time = start_time + timedelta(hours=session_duration_hours)
+        session_period = f"{start_time.strftime('%H:%M')}-{end_time.strftime('%H:%M')} KST"
+
+        # Format strategy parameters
+        params_text = ""
+        for key, value in strategy_params.items():
+            params_text += f"• {key}: {value}\n"
+
+        # Build message
+        message = f"""
+🚀 <b>TRADING SESSION STARTED</b>
+
+<b>Mode:</b> {mode_text}
+<b>Symbol:</b> {symbol}
+<b>Timeframe:</b> {timeframe}
+<b>Duration:</b> {session_duration_hours} hours
+<b>Session Period:</b> {session_period}
+
+<b>Strategy Configuration:</b>
+• Strategy: {strategy_name}
+{params_text}"""
+
+        # Add backtest results if available
+        if backtest_results:
+            message += f"""• Backtest Win Rate: {backtest_results.get('win_rate', 0):.1f}%
+• Backtest Return: {backtest_results.get('total_return', 0):+.1f}%
+
+"""
+        else:
+            message += "\n"
+
+        # Calculate circuit breaker threshold
+        circuit_breaker_amount = initial_balance * (max_loss_percent / 100)
+
+        message += f"""<b>Risk Parameters:</b>
+• Initial Balance: ${initial_balance:,.2f}
+• Leverage: {leverage}x
+• Max Daily Loss: {max_loss_percent}%
+• Circuit Breaker: ${circuit_breaker_amount:,.2f}
+
+<b>Time:</b> {start_time.strftime('%Y-%m-%d %H:%M:%S')}
+━━━━━━━━━━━━━━━━━━━━
+Good luck trading! 🎯
+"""
+
+        return self.send_sync(message)
+
     def send_risk_alert(self, alert_type: str, message_text: str) -> bool:
         """
         Send risk management alert.

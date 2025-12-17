@@ -22,10 +22,10 @@ from dashboard.utils.formatters import format_percentage, format_timestamp
 from config.config import Config
 
 
-st.set_page_config(page_title="Today's Strategy", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="오늘의 전략", page_icon="🎯", layout="wide")
 
 # Title
-st.title("🎯 Today's Champion Strategy")
+st.title("🎯 오늘의 챔피언 전략")
 st.markdown("---")
 
 # Initialize data loader
@@ -39,12 +39,12 @@ data_loader = st.session_state.data_loader
 col1, col2 = st.columns([3, 1])
 with col1:
     selected_date = st.date_input(
-        "Select Date",
+        "날짜 선택",
         value=datetime.now(),
         max_value=datetime.now()
     )
 with col2:
-    if st.button("🔄 Refresh"):
+    if st.button("🔄 새로고침"):
         data_loader.clear_cache()
         st.rerun()
 
@@ -54,63 +54,63 @@ date_str = selected_date.strftime('%Y-%m-%d')
 strategy = data_loader.get_today_strategy(date_str)
 
 if not strategy:
-    st.warning(f"⚠️ No strategy selected for {date_str}")
+    st.warning(f"⚠️ {date_str}에 선택된 전략이 없습니다")
     st.info("""
-    **No strategy data found for this date.**
+    **이 날짜에 대한 전략 데이터를 찾을 수 없습니다.**
 
-    Possible reasons:
-    - Strategy selection hasn't run yet for this date
-    - Database doesn't have backtest results for this date
-    - Bot is not configured for automatic strategy selection
+    가능한 원인:
+    - 이 날짜에 대한 전략 선택이 아직 실행되지 않았습니다
+    - 데이터베이스에 이 날짜에 대한 백테스트 결과가 없습니다
+    - 봇이 자동 전략 선택을 위해 구성되지 않았습니다
 
-    **Next Steps:**
-    - Try a different date
-    - Run strategy selection manually: `python main_bot.py --mode select`
-    - Check bot logs for errors
+    **다음 단계:**
+    - 다른 날짜를 시도해 보세요
+    - 수동으로 전략 선택 실행: `python main_bot.py --mode select`
+    - 오류에 대한 봇 로그 확인
     """)
     st.stop()
 
 # Champion Strategy Card
-st.markdown("### 🏆 Selected Strategy")
+st.markdown("### 🏆 선택된 전략")
 
 col1, col2, col3 = st.columns([2, 1, 1])
 
 with col1:
     st.markdown(f"#### {strategy['strategy_name']}")
-    st.caption(f"Selected on: {strategy.get('date', date_str)}")
+    st.caption(f"선택일: {strategy.get('date', date_str)}")
 
 with col2:
-    st.metric("Composite Score", f"{strategy.get('score', 0):.2f}")
+    st.metric("종합 점수", f"{strategy.get('score', 0):.2f}")
 
 with col3:
     rank = strategy.get('rank', 1)
     medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
-    st.metric("Rank", medal)
+    st.metric("순위", medal)
 
 st.markdown("---")
 
 # Performance Metrics Grid
-st.markdown("### 📊 Backtest Performance Metrics")
+st.markdown("### 📊 백테스트 성과 지표")
 
 metrics_data = [
-    ("Total Return", format_percentage(strategy.get('total_return', 0)), None),
-    ("Win Rate", format_percentage(strategy.get('win_rate', 0)), None),
-    ("Profit Factor", f"{strategy.get('profit_factor', 0):.2f}", None),
-    ("Sharpe Ratio", f"{strategy.get('sharpe_ratio', 0):.2f}", None)
+    ("총 수익률", format_percentage(strategy.get('total_return', 0)), None),
+    ("승률", format_percentage(strategy.get('win_rate', 0)), None),
+    ("수익 팩터", f"{strategy.get('profit_factor', 0):.2f}", None),
+    ("샤프 지수", f"{strategy.get('sharpe_ratio', 0):.2f}", None)
 ]
 
 MetricCard.display_4_column_metrics(metrics_data)
 
 col1, col2 = st.columns(2)
 with col1:
-    st.metric("Max Drawdown", format_percentage(abs(strategy.get('max_drawdown', 0))))
+    st.metric("최대 낙폭", format_percentage(abs(strategy.get('max_drawdown', 0))))
 with col2:
-    st.metric("Total Trades", strategy.get('total_trades', 0))
+    st.metric("총 거래", strategy.get('total_trades', 0))
 
 st.markdown("---")
 
 # Applied Parameters
-st.markdown("### ⚙️ Applied Parameters")
+st.markdown("### ⚙️ 적용된 파라미터")
 
 params_str = strategy.get('params', '{}')
 try:
@@ -122,26 +122,26 @@ try:
     if params:
         # Create parameter table
         param_descriptions = {
-            'k': 'Volatility multiplier for breakout detection',
-            'lookback_period': 'Number of periods to calculate volatility',
-            'ma_period': 'Moving average period for trend filter',
-            'use_ma_filter': 'Enable moving average trend filter',
-            'stop_loss_percent': 'Stop loss threshold percentage',
-            'take_profit_percent': 'Take profit target percentage',
-            'rsi_period': 'RSI calculation period',
-            'rsi_buy_threshold': 'RSI oversold threshold (buy signal)',
-            'rsi_sell_threshold': 'RSI overbought threshold (sell signal)',
-            'bb_period': 'Bollinger Bands period',
-            'bb_stddev': 'Bollinger Bands standard deviation multiplier',
-            'short_window': 'Short moving average window',
-            'long_window': 'Long moving average window',
-            'vol_lookback': 'Volume lookback period',
-            'vol_multiplier': 'Volume surge multiplier'
+            'k': '돌파 감지를 위한 변동성 승수',
+            'lookback_period': '변동성 계산을 위한 룩백 기간',
+            'ma_period': '추세 필터를 위한 이동 평균 기간',
+            'use_ma_filter': '이동 평균 추세 필터 활성화',
+            'stop_loss_percent': '손절매 임계값 비율',
+            'take_profit_percent': '이익 실현 목표 비율',
+            'rsi_period': 'RSI 계산 기간',
+            'rsi_buy_threshold': 'RSI 과매도 임계값 (매수 신호)',
+            'rsi_sell_threshold': 'RSI 과매수 임계값 (매도 신호)',
+            'bb_period': '볼린저 밴드 기간',
+            'bb_stddev': '볼린저 밴드 표준 편차 승수',
+            'short_window': '단기 이동 평균 윈도우',
+            'long_window': '장기 이동 평균 윈도우',
+            'vol_lookback': '거래량 룩백 기간',
+            'vol_multiplier': '거래량 급증 승수'
         }
 
         param_data = []
         for key, value in params.items():
-            description = param_descriptions.get(key, 'Parameter for strategy configuration')
+            description = param_descriptions.get(key, '전략 구성을 위한 파라미터')
             param_data.append({
                 'Parameter': key,
                 'Value': str(value),
@@ -151,15 +151,15 @@ try:
         param_df = pd.DataFrame(param_data)
         st.dataframe(param_df, use_container_width=True, hide_index=True)
     else:
-        st.info("No parameters specified for this strategy")
+        st.info("이 전략에 지정된 파라미터가 없습니다")
 
 except json.JSONDecodeError:
-    st.error(f"Error parsing parameters: {params_str}")
+    st.error(f"파라미터 파싱 오류: {params_str}")
 
 st.markdown("---")
 
 # Strategy Comparison - Top Alternatives
-st.markdown("### 📈 Strategy Rankings (All Tested)")
+st.markdown("### 📈 전략 순위 (모든 테스트됨)")
 
 rankings = data_loader.get_strategy_rankings(date_str)
 
@@ -170,14 +170,14 @@ if not rankings.empty:
             rankings,
             strategy_col='strategy_name',
             score_col='score',
-            title="Strategy Performance Comparison",
+            title="전략 성과 비교",
             top_n=10
         ),
         use_container_width=True
     )
 
     # Show detailed table
-    st.markdown("#### Detailed Rankings")
+    st.markdown("#### 상세 순위")
 
     # Format ranking table
     rankings_display = TableFormatter.format_strategy_ranking(rankings)
@@ -188,19 +188,19 @@ if not rankings.empty:
     # Download button
     csv = rankings.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="📥 Download Rankings CSV",
+        label="📥 순위 CSV 다운로드",
         data=csv,
         file_name=f"strategy_rankings_{date_str}.csv",
         mime="text/csv"
     )
 
 else:
-    st.info("No ranking data available for this date")
+    st.info("이 날짜에 대한 순위 데이터가 없습니다")
 
 st.markdown("---")
 
 # Radar Chart for Multi-Metric Comparison
-st.markdown("### 🎯 Multi-Metric Performance Radar")
+st.markdown("### 🎯 다중 지표 성과 레이더")
 
 if strategy:
     # Normalize metrics to 0-100 scale for radar chart
@@ -218,27 +218,27 @@ if strategy:
         st.plotly_chart(
             ChartBuilder.strategy_comparison_radar(
                 metrics_radar,
-                title="Strategy Performance Metrics (Normalized)",
+                title="전략 성과 지표 (정규화됨)",
                 height=400
             ),
             use_container_width=True
         )
 
     with col2:
-        st.markdown("#### Metric Interpretation")
+        st.markdown("#### 지표 해석")
         st.markdown("""
-        **Normalized metrics (0-100 scale):**
+        **정규화된 지표 (0-100 스케일):**
 
-        - **Return**: Total return % scaled
-        - **Win Rate**: Percentage of winning trades
-        - **Sharpe**: Risk-adjusted return quality
-        - **Profit Factor**: Profit/Loss ratio
-        - **Drawdown**: Capital preservation (inverted)
+        - **Return**: 총 수익률 (스케일됨)
+        - **Win Rate**: 승리한 거래의 비율
+        - **Sharpe**: 위험 조정 수익 품질
+        - **Profit Factor**: 손익 비율
+        - **Drawdown**: 자본 보존 (반전됨)
 
-        A well-rounded strategy shows balanced
-        performance across all metrics.
+        균형 잡힌 전략은 모든 지표에서
+        고른 성과를 보여줍니다.
         """)
 
 # Footer
 st.markdown("---")
-st.caption(f"Strategy selection date: {date_str} | Last updated: {datetime.now().strftime('%H:%M:%S')}")
+st.caption(f"전략 선택일: {date_str} | 마지막 업데이트: {datetime.now().strftime('%H:%M:%S')}")

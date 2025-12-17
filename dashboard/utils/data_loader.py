@@ -46,7 +46,7 @@ class DashboardDataLoader:
             conn.row_factory = sqlite3.Row
             return conn
 
-    @st.cache_data(ttl=30, show_spinner=False)
+    @st.cache_data(ttl=10, show_spinner=False)
     def get_bot_status(_self) -> Optional[Dict]:
         """
         Get current bot status from bot_status table.
@@ -403,6 +403,76 @@ class DashboardDataLoader:
             'best_trade': trades['pnl'].max(),
             'worst_trade': trades['pnl'].min()
         }
+
+    @st.cache_data(ttl=5, show_spinner=False)
+    def get_recent_activity(_self, limit: int = 50, event_category: Optional[str] = None) -> pd.DataFrame:
+        """
+        Get recent activity log entries.
+
+        Args:
+            limit: Maximum number of entries to retrieve
+            event_category: Filter by category ('bot', 'trading', 'strategy', 'system')
+
+        Returns:
+            DataFrame with activity log
+        """
+        query = "SELECT * FROM activity_log"
+        params = []
+
+        if event_category:
+            query += " WHERE event_category = ?"
+            params.append(event_category)
+
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        try:
+            conn = _self._get_connection()
+            df = pd.read_sql_query(query, conn, params=params)
+            conn.close()
+
+            if not df.empty and 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+            return df
+        except Exception as e:
+            st.warning(f"Error loading activity log: {e}")
+            return pd.DataFrame()
+
+    @st.cache_data(ttl=5, show_spinner=False)
+    def get_latest_signals(_self, symbol: Optional[str] = None, limit: int = 10) -> pd.DataFrame:
+        """
+        Get latest trading signals.
+
+        Args:
+            symbol: Filter by symbol (optional)
+            limit: Maximum number of signals to retrieve
+
+        Returns:
+            DataFrame with trading signals
+        """
+        query = "SELECT * FROM trading_signals"
+        params = []
+
+        if symbol:
+            query += " WHERE symbol = ?"
+            params.append(symbol)
+
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        try:
+            conn = _self._get_connection()
+            df = pd.read_sql_query(query, conn, params=params)
+            conn.close()
+
+            if not df.empty and 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+            return df
+        except Exception as e:
+            st.warning(f"Error loading signals: {e}")
+            return pd.DataFrame()
 
     def clear_cache(_self):
         """Clear all cached data."""

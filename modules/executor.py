@@ -279,6 +279,99 @@ class OrderExecutor:
             print(f"Error closing position: {e}")
             return False
 
+    def close_all_positions(self, reason: str = "manual") -> Dict[str, any]:
+        """
+        Close all open positions using market orders.
+
+        Args:
+            reason: Reason for closing positions (e.g., "manual", "emergency", "dashboard_force_close")
+
+        Returns:
+            Dict containing:
+                - success: bool
+                - positions_closed: int
+                - positions_failed: int
+                - total_pnl: float
+                - closed_positions: List[Dict]
+                - errors: List[Dict]
+        """
+        closed_positions = []
+        errors = []
+        total_pnl = 0.0
+
+        try:
+            # Cancel all pending orders first
+            self.cancel_all_orders()
+
+            # Get all active positions from exchange
+            positions = self.exchange.fetch_positions()
+            active_positions = [pos for pos in positions if float(pos.get('contracts', 0)) != 0]
+
+            if not active_positions:
+                print("No active positions to close")
+                return {
+                    'success': True,
+                    'positions_closed': 0,
+                    'positions_failed': 0,
+                    'total_pnl': 0.0,
+                    'closed_positions': [],
+                    'errors': []
+                }
+
+            # Close each position
+            for position in active_positions:
+                try:
+                    symbol = position['symbol']
+                    side = position['side']
+                    contracts = abs(float(position['contracts']))
+                    unrealized_pnl = float(position.get('unrealizedPnl', 0))
+
+                    # Determine close side (opposite of position side)
+                    close_side = 'sell' if side == 'long' else 'buy'
+
+                    # Create reduce-only market order
+                    order = self.create_market_order(symbol, close_side, contracts, reduce_only=True)
+
+                    if order:
+                        closed_positions.append({
+                            'symbol': symbol,
+                            'side': side,
+                            'contracts': contracts,
+                            'pnl': unrealized_pnl,
+                            'order_id': order['id']
+                        })
+                        total_pnl += unrealized_pnl
+                        print(f"Closed position: {symbol} {side} ({contracts} contracts), PNL: ${unrealized_pnl:.2f}")
+                    else:
+                        errors.append({
+                            'symbol': symbol,
+                            'error': 'Order creation failed'
+                        })
+                        print(f"Failed to close position: {symbol}")
+
+                except Exception as e:
+                    errors.append({
+                        'symbol': position.get('symbol', 'Unknown'),
+                        'error': str(e)
+                    })
+                    print(f"Error closing position {position.get('symbol', 'Unknown')}: {e}")
+
+        except Exception as e:
+            print(f"Error fetching positions: {e}")
+            errors.append({
+                'symbol': 'ALL',
+                'error': f'Failed to fetch positions: {str(e)}'
+            })
+
+        return {
+            'success': len(errors) == 0,
+            'positions_closed': len(closed_positions),
+            'positions_failed': len(errors),
+            'total_pnl': total_pnl,
+            'closed_positions': closed_positions,
+            'errors': errors
+        }
+
     def set_stop_loss_take_profit(
         self,
         symbol: str,

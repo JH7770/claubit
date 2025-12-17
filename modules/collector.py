@@ -74,7 +74,7 @@ class DataCollector:
                 columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
             )
 
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
             df.set_index('timestamp', inplace=True)
 
             return df

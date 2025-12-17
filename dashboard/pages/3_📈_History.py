@@ -20,11 +20,11 @@ from dashboard.utils.formatters import format_currency, format_percentage
 from config.config import Config
 
 
-st.set_page_config(page_title="History & Analysis", page_icon="📈", layout="wide")
+st.set_page_config(page_title="기록 및 분석", page_icon="📈", layout="wide")
 
 # Title
-st.title("📈 History & Analysis")
-st.markdown("Analyze historical trading performance and detailed trade records")
+st.title("📈 기록 및 분석")
+st.markdown("과거 거래 성과 및 상세 거래 기록 분석")
 st.markdown("---")
 
 # Initialize data loader
@@ -35,20 +35,20 @@ if 'data_loader' not in st.session_state:
 data_loader = st.session_state.data_loader
 
 # Filters Section
-st.markdown("### 🔍 Filters")
+st.markdown("### 🔍 필터")
 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     start_date = st.date_input(
-        "Start Date",
+        "시작 날짜",
         value=datetime.now() - timedelta(days=30),
         max_value=datetime.now()
     )
 
 with col2:
     end_date = st.date_input(
-        "End Date",
+        "종료 날짜",
         value=datetime.now(),
         max_value=datetime.now()
     )
@@ -57,7 +57,7 @@ with col3:
     # Get unique symbols
     symbols = data_loader.get_unique_symbols()
     symbol_filter = st.selectbox(
-        "Symbol",
+        "심볼",
         options=["All"] + symbols,
         index=0
     )
@@ -66,7 +66,7 @@ with col4:
     # Get unique strategies
     strategies = data_loader.get_unique_strategies()
     strategy_filter = st.selectbox(
-        "Strategy",
+        "전략",
         options=["All"] + strategies,
         index=0
     )
@@ -95,33 +95,33 @@ daily_summaries = data_loader.get_daily_summaries(
 )
 
 # Performance Summary Metrics
-st.markdown("### 📊 Performance Summary")
+st.markdown("### 📊 성과 요약")
 
 if not trades.empty:
     stats = data_loader.get_trade_statistics(start_date_str, end_date_str)
 
     metrics_data = [
-        ("Total Trades", str(stats['total_trades']), None),
-        ("Total PNL", format_currency(stats['total_pnl'], include_sign=True), None),
-        ("Win Rate", format_percentage(stats['win_rate']), None),
-        ("Avg PNL", format_currency(stats['avg_pnl'], include_sign=True), None)
+        ("총 거래", str(stats['total_trades']), None),
+        ("총 PNL", format_currency(stats['total_pnl'], include_sign=True), None),
+        ("승률", format_percentage(stats['win_rate']), None),
+        ("평균 PNL", format_currency(stats['avg_pnl'], include_sign=True), None)
     ]
 
     MetricCard.display_4_column_metrics(metrics_data)
 
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Best Trade", format_currency(stats['best_trade'], include_sign=True))
+        st.metric("최고 거래", format_currency(stats['best_trade'], include_sign=True))
     with col2:
-        st.metric("Worst Trade", format_currency(stats['worst_trade'], include_sign=True))
+        st.metric("최악 거래", format_currency(stats['worst_trade'], include_sign=True))
 
 else:
-    st.info("No trades found for the selected filters")
+    st.info("선택된 필터에 대한 거래가 없습니다")
 
 st.markdown("---")
 
 # Cumulative Return Chart
-st.markdown("### 📈 Cumulative Return")
+st.markdown("### 📈 누적 수익률")
 
 if not trades.empty:
     cum_pnl = data_loader.get_cumulative_pnl(start_date_str, end_date_str)
@@ -132,20 +132,20 @@ if not trades.empty:
                 cum_pnl,
                 x_col='timestamp',
                 y_col='cumulative_pnl',
-                title="Cumulative PNL Over Time",
+                title="시간에 따른 누적 PNL",
                 height=400
             ),
             use_container_width=True
         )
     else:
-        st.info("No cumulative PNL data available")
+        st.info("누적 PNL 데이터 없음")
 else:
-    st.info("No trade data to display")
+    st.info("표시할 거래 데이터 없음")
 
 st.markdown("---")
 
 # Daily PNL Chart
-st.markdown("### 📊 Daily PNL")
+st.markdown("### 📊 일일 PNL")
 
 if not daily_summaries.empty:
     st.plotly_chart(
@@ -153,18 +153,18 @@ if not daily_summaries.empty:
             daily_summaries,
             date_col='date',
             pnl_col='total_pnl',
-            title="Daily Profit/Loss",
+            title="일일 손익",
             height=400
         ),
         use_container_width=True
     )
 else:
-    st.info("No daily summary data available")
+    st.info("일일 요약 데이터 없음")
 
 st.markdown("---")
 
 # Exit Reason Distribution
-st.markdown("### 🎯 Exit Reason Distribution")
+st.markdown("### 🎯 종료 사유 분포")
 
 if not trades.empty and 'exit_reason' in trades.columns:
     col1, col2 = st.columns([2, 1])
@@ -174,25 +174,25 @@ if not trades.empty and 'exit_reason' in trades.columns:
             ChartBuilder.exit_reason_pie(
                 trades,
                 reason_col='exit_reason',
-                title="Trade Exit Reasons",
+                title="거래 종료 사유",
                 height=400
             ),
             use_container_width=True
         )
 
     with col2:
-        st.markdown("#### Exit Reasons")
+        st.markdown("#### 종료 사유")
         reason_counts = trades['exit_reason'].value_counts()
         for reason, count in reason_counts.items():
             st.write(f"**{reason}**: {count} ({count/len(trades)*100:.1f}%)")
 
 else:
-    st.info("No exit reason data available")
+    st.info("종료 사유 데이터 없음")
 
 st.markdown("---")
 
 # Trade Log Table
-st.markdown("### 📋 Trade Log")
+st.markdown("### 📋 거래 로그")
 
 if not trades.empty:
     # Format trade table
@@ -206,11 +206,11 @@ if not trades.empty:
     col1, col2, col3 = st.columns([2, 1, 1])
 
     with col1:
-        st.caption(f"Total trades: {total_trades}")
+        st.caption(f"총 거래: {total_trades}")
 
     with col2:
         page = st.number_input(
-            "Page",
+            "페이지",
             min_value=1,
             max_value=max(1, total_pages),
             value=1,
@@ -220,7 +220,7 @@ if not trades.empty:
     with col3:
         csv = trades.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="📥 Download CSV",
+            label="📥 CSV 다운로드",
             data=csv,
             file_name=f"trades_{start_date_str}_to_{end_date_str}.csv",
             mime="text/csv"
@@ -236,17 +236,17 @@ if not trades.empty:
         hide_index=True
     )
 
-    st.caption(f"Showing {start_idx + 1}-{end_idx} of {total_trades} trades")
+    st.caption(f"{total_trades} 건 중 {start_idx + 1}-{end_idx} 건 표시 중")
 
 else:
-    st.info("No trades to display")
+    st.info("표시할 거래 없음")
 
 st.markdown("---")
 
 # Additional Analytics
-with st.expander("📊 Additional Analytics"):
+with st.expander("📊 추가 분석"):
     if not trades.empty:
-        st.markdown("#### Trade Duration Analysis")
+        st.markdown("#### 거래 기간 분석")
 
         if 'duration_seconds' in trades.columns:
             trades['duration_minutes'] = trades['duration_seconds'] / 60
@@ -256,13 +256,13 @@ with st.expander("📊 Additional Analytics"):
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Avg Duration", f"{avg_duration:.1f} min")
+                st.metric("평균 기간", f"{avg_duration:.1f} 분")
             with col2:
-                st.metric("Max Duration", f"{max_duration:.1f} min")
+                st.metric("최대 기간", f"{max_duration:.1f} 분")
             with col3:
-                st.metric("Min Duration", f"{min_duration:.1f} min")
+                st.metric("최소 기간", f"{min_duration:.1f} 분")
 
-        st.markdown("#### PNL Distribution")
+        st.markdown("#### PNL 분포")
 
         if 'pnl' in trades.columns:
             positive_trades = trades[trades['pnl'] > 0]
@@ -271,24 +271,24 @@ with st.expander("📊 Additional Analytics"):
             col1, col2 = st.columns(2)
             with col1:
                 st.metric(
-                    "Avg Winning Trade",
+                    "평균 수익 거래",
                     format_currency(positive_trades['pnl'].mean() if not positive_trades.empty else 0)
                 )
             with col2:
                 st.metric(
-                    "Avg Losing Trade",
+                    "평균 손실 거래",
                     format_currency(negative_trades['pnl'].mean() if not negative_trades.empty else 0)
                 )
 
-        st.markdown("#### Strategy Performance Breakdown")
+        st.markdown("#### 전략 성과 세부 정보")
 
         if 'strategy_name' in trades.columns and 'pnl' in trades.columns:
             strategy_pnl = trades.groupby('strategy_name')['pnl'].agg(['sum', 'mean', 'count'])
-            strategy_pnl.columns = ['Total PNL', 'Avg PNL', 'Trade Count']
-            strategy_pnl = strategy_pnl.sort_values('Total PNL', ascending=False)
+            strategy_pnl.columns = ['총 PNL', '평균 PNL', '거래 횟수']
+            strategy_pnl = strategy_pnl.sort_values('총 PNL', ascending=False)
 
             st.dataframe(strategy_pnl, use_container_width=True)
 
 # Footer
 st.markdown("---")
-st.caption(f"Date range: {start_date_str} to {end_date_str} | Last updated: {datetime.now().strftime('%H:%M:%S')}")
+st.caption(f"기간: {start_date_str} ~ {end_date_str} | 마지막 업데이트: {datetime.now().strftime('%H:%M:%S')}")

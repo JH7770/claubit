@@ -18,11 +18,12 @@ from dashboard.utils.bot_controller import BotController
 from dashboard.components.charts import ChartBuilder
 from dashboard.components.metrics import MetricCard
 from dashboard.components.tables import TableFormatter
+from dashboard.components.activity_monitor import ActivityMonitor
 from dashboard.utils.formatters import format_currency, format_percentage, format_duration
 from config.config import Config
 
 
-st.set_page_config(page_title="Dashboard", page_icon="📊", layout="wide")
+st.set_page_config(page_title="대시보드", page_icon="📊", layout="wide")
 
 # Initialize
 if 'data_loader' not in st.session_state:
@@ -38,12 +39,12 @@ config = Config()
 st_autorefresh(interval=30000, key="dashboard_refresh")
 
 # Title
-st.title("📊 Real-time Dashboard")
-st.markdown("Monitor bot performance and control trading operations")
+st.title("📊 실시간 대시보드")
+st.markdown("봇 성능 모니터링 및 트레이딩 제어")
 st.markdown("---")
 
 # Bot Status and Controls
-st.markdown("### 🤖 Bot Control Panel")
+st.markdown("### 🤖 봇 제어 패널")
 
 col1, col2, col3 = st.columns(3)
 
@@ -52,88 +53,244 @@ bot_status = bot_controller.get_status()
 
 with col1:
     if is_running:
-        st.success("🟢 Bot is Running")
+        st.success("🟢 봇 실행 중")
         if bot_status['status'] == 'running':
             st.caption(f"PID: {bot_status['pid']}")
-            st.caption(f"Uptime: {format_duration(bot_status['uptime_seconds'])}")
-            st.caption(f"Memory: {bot_status['memory_mb']:.1f} MB")
+            st.caption(f"가동 시간: {format_duration(bot_status['uptime_seconds'])}")
+            st.caption(f"메모리: {bot_status['memory_mb']:.1f} MB")
     else:
-        st.error("🔴 Bot is Stopped")
+        st.error("🔴 봇 중지됨")
 
 with col2:
-    st.metric("Trading Mode", config.TRADING_MODE)
-    st.metric("Leverage", f"{config.LEVERAGE}x")
+    st.metric("트레이딩 모드", config.TRADING_MODE)
+    st.metric("레버리지", f"{config.LEVERAGE}x")
 
 with col3:
-    st.metric("Primary Symbol", config.PRIMARY_SYMBOL)
+    st.metric("주요 심볼", config.PRIMARY_SYMBOL)
 
 # Control Buttons
-st.markdown("#### Emergency Controls")
+st.markdown("#### 비상 제어")
 
-col1, col2, col3, col4 = st.columns(4)
+# Strategy selection option (before immediate trade button)
+strategy_option = st.radio(
+    "전략 선택 옵션",
+    ["🔄 새 전략 선택 (백테스트 실행)", "♻️ 이전 전략 사용"],
+    horizontal=True,
+    help="새 전략 선택: 백테스트를 실행하여 최적의 전략을 선택합니다 (시간 소요)\n이전 전략 사용: 가장 최근에 선택된 전략을 바로 사용합니다 (빠름)"
+)
+
+skip_selection = (strategy_option == "♻️ 이전 전략 사용")
+
+# Row 1: Start buttons
+col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("▶️ START BOT", disabled=is_running, use_container_width=True):
-        with st.spinner("Starting bot..."):
-            success = bot_controller.start_bot(mode="scheduled")
-            if success:
-                st.success("✅ Bot started successfully")
-                st.rerun()
-            else:
-                st.error("❌ Failed to start bot")
+    if st.button("🚀 즉시 거래 시작", disabled=is_running, use_container_width=True, type="primary"):
+        if skip_selection:
+            with st.spinner("전체 사이클 시작 중 (데이터 동기화 → 이전 전략 로드 → 거래)..."):
+                success = bot_controller.start_bot(mode="once", skip_selection=True)
+                if success:
+                    st.success("✅ 즉시 거래가 시작되었습니다 (이전 전략 사용)")
+                    st.info("📊 전체 사이클이 완료되면 봇이 자동으로 중지됩니다")
+                    st.rerun()
+                else:
+                    st.error("❌ 거래 시작 실패")
+        else:
+            with st.spinner("전체 사이클 시작 중 (데이터 동기화 → 전략 선택 → 거래)..."):
+                success = bot_controller.start_bot(mode="once", skip_selection=False)
+                if success:
+                    st.success("✅ 즉시 거래가 시작되었습니다 (새 전략 선택)")
+                    st.info("📊 전체 사이클이 완료되면 봇이 자동으로 중지됩니다")
+                    st.rerun()
+                else:
+                    st.error("❌ 거래 시작 실패")
 
 with col2:
-    if st.button("⏸️ STOP BOT", disabled=not is_running, use_container_width=True):
-        with st.spinner("Stopping bot..."):
+    if st.button("⏰ 스케줄 봇 시작", disabled=is_running, use_container_width=True):
+        with st.spinner("스케줄 봇 시작 중..."):
+            success = bot_controller.start_bot(mode="scheduled")
+            if success:
+                st.success("✅ 스케줄 봇이 시작되었습니다")
+                st.info("📅 매일 22:30 KST에 자동으로 거래가 실행됩니다")
+                st.rerun()
+            else:
+                st.error("❌ 봇 시작 실패")
+
+# Row 2: Control buttons
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("⏸️ 봇 중지", disabled=not is_running, use_container_width=True):
+        with st.spinner("봇 중지 중..."):
             success = bot_controller.stop_bot()
             if success:
-                st.success("✅ Bot stopped successfully")
+                st.success("✅ 봇이 성공적으로 중지되었습니다")
                 st.rerun()
             else:
-                st.error("❌ Failed to stop bot")
+                st.error("❌ 봇 중지 실패")
 
-with col3:
-    if st.button("🔄 RESTART BOT", disabled=not is_running, use_container_width=True):
-        with st.spinner("Restarting bot..."):
+with col2:
+    if st.button("🔄 봇 재시작", disabled=not is_running, use_container_width=True):
+        with st.spinner("봇 재시작 중..."):
             success = bot_controller.restart_bot(mode="scheduled")
             if success:
-                st.success("✅ Bot restarted successfully")
+                st.success("✅ 봇이 성공적으로 재시작되었습니다")
                 st.rerun()
             else:
-                st.error("❌ Failed to restart bot")
+                st.error("❌ 봇 재시작 실패")
 
-with col4:
-    if st.button("🛑 FORCE CLOSE ALL", type="secondary", use_container_width=True):
+with col3:
+    # Check for open positions
+    open_positions = data_loader.get_open_positions()
+    has_positions = len(open_positions) > 0
+
+    # Button always visible, disabled if no positions
+    if st.button("🛑 강제 종료 (전체)", type="secondary", use_container_width=True, disabled=not has_positions):
+
         if config.is_live_mode():
-            st.error("⛔ Cannot force close in LIVE mode via dashboard (safety feature)")
+            # LIVE MODE - 2-step confirmation
+            st.warning("⚠️ 라이브 모드에서 모든 포지션을 강제 종료합니다!")
+            st.error(f"현재 오픈 포지션: {len(open_positions)}개")
+
+            # Show position preview
+            if has_positions:
+                st.dataframe(
+                    open_positions[['symbol', 'side', 'entry_price', 'amount']],
+                    use_container_width=True
+                )
+
+            # Text confirmation
+            confirm_text = st.text_input(
+                "확인을 위해 'FORCE CLOSE'를 입력하세요:",
+                key="force_close_confirm"
+            )
+
+            if confirm_text == "FORCE CLOSE":
+                if st.button("✅ 최종 확인 - 모든 포지션 종료", type="primary"):
+                    with st.spinner("포지션 종료 중..."):
+                        result = bot_controller.force_close_all_positions(
+                            reason="dashboard_live_manual"
+                        )
+
+                        if result['success']:
+                            st.success(
+                                f"✅ {result['positions_closed']}개 포지션이 종료되었습니다. "
+                                f"총 PNL: ${result['total_pnl']:,.2f}"
+                            )
+                            st.rerun()
+                        else:
+                            st.error(f"❌ 종료 실패: {result['message']}")
+            elif confirm_text:
+                st.error("'FORCE CLOSE'를 정확히 입력하세요.")
+
         else:
-            st.warning("⚠️ This will close all open positions immediately!")
-            st.info("This feature requires bot integration - use bot directly")
+            # PAPER MODE - Single confirmation
+            st.warning(f"⚠️ {len(open_positions)}개의 포지션이 즉시 종료됩니다!")
+
+            if st.button("확인 - 종료 실행", type="primary"):
+                with st.spinner("포지션 종료 중..."):
+                    result = bot_controller.force_close_all_positions(
+                        reason="dashboard_paper_manual"
+                    )
+
+                    if result['success']:
+                        st.success(
+                            f"✅ {result['positions_closed']}개 포지션이 종료되었습니다. "
+                            f"총 PNL: ${result['total_pnl']:,.2f}"
+                        )
+                        if result['positions_closed'] > 0:
+                            st.metric(
+                                label="Total PNL",
+                                value=f"${result['total_pnl']:,.2f}",
+                                delta=f"{result['positions_closed']} positions"
+                            )
+                        st.rerun()
+                    else:
+                        st.error(f"❌ 종료 실패: {result['message']}")
+
+    # Helper text when no positions
+    if not has_positions:
+        st.caption("현재 오픈 포지션이 없습니다")
+
+st.markdown("---")
+
+# Activity Monitor Section
+st.markdown("### 🎬 봇 활동 모니터")
+
+# Get bot status from database (not just process status)
+db_bot_status = data_loader.get_bot_status()
+
+# Current Task Status
+st.markdown("#### 현재 작업")
+ActivityMonitor.display_task_status(db_bot_status)
+
+st.markdown("---")
+
+# Next Scheduled Task
+st.markdown("#### 다음 예정 작업")
+ActivityMonitor.display_next_task(db_bot_status)
+
+st.markdown("---")
+
+# Real-time Signal Status (if trading)
+if db_bot_status and db_bot_status.get('current_task') == 'trading':
+    latest_signals = data_loader.get_latest_signals(config.PRIMARY_SYMBOL, limit=5)
+    ActivityMonitor.display_signal_status(latest_signals)
+    st.markdown("---")
+
+# Activity Timeline
+st.markdown("#### 활동 기록")
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    filter_category = st.selectbox(
+        "카테고리 필터",
+        ['전체', '봇', '거래', '전략', '시스템'],
+        key='activity_filter'
+    )
+
+with col2:
+    max_items = st.number_input("표시 개수", 10, 100, 20, 10, key='activity_max_items')
+
+category_map = {
+    '전체': None,
+    '봇': 'bot',
+    '거래': 'trading',
+    '전략': 'strategy',
+    '시스템': 'system'
+}
+
+recent_activities = data_loader.get_recent_activity(
+    limit=max_items,
+    event_category=category_map[filter_category]
+)
+
+ActivityMonitor.display_activity_timeline(recent_activities, max_items)
 
 st.markdown("---")
 
 # Performance Metrics
-st.markdown("### 📊 Today's Performance")
+st.markdown("### 📊 오늘의 성과")
 
 today = datetime.now().strftime('%Y-%m-%d')
 summary = data_loader.get_daily_summary(today)
 
 if summary:
     metrics_data = [
-        ("Current Balance", format_currency(summary.get('ending_balance', 0)), None),
-        ("Daily PNL", format_currency(summary.get('total_pnl', 0), include_sign=True),
+        ("현재 잔고", format_currency(summary.get('ending_balance', 0)), None),
+        ("일일 PNL", format_currency(summary.get('total_pnl', 0), include_sign=True),
          format_percentage(summary.get('total_pnl', 0) / summary.get('starting_balance', 1) * 100)),
-        ("Win Rate", format_percentage(summary.get('win_rate', 0)), None),
-        ("Total Trades", str(summary.get('total_trades', 0)), None)
+        ("승률", format_percentage(summary.get('win_rate', 0)), None),
+        ("총 거래", str(summary.get('total_trades', 0)), None)
     ]
     MetricCard.display_4_column_metrics(metrics_data)
 else:
-    st.info("No trading activity today")
+    st.info("오늘 거래 활동 없음")
 
 st.markdown("---")
 
 # Real-time Equity Chart (Last 24 hours)
-st.markdown("### 📈 Equity Curve (Last 24 hours)")
+st.markdown("### 📈 자산 곡선 (최근 24시간)")
 
 yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
 recent_trades = data_loader.get_trade_history(start_date=yesterday, end_date=today)
@@ -145,18 +302,18 @@ if not recent_trades.empty:
             cum_pnl,
             x_col='timestamp',
             y_col='cumulative_pnl',
-            title="24-Hour Equity Curve",
+            title="24시간 자산 곡선",
             height=350
         ),
         use_container_width=True
     )
 else:
-    st.info("No recent trading data available")
+    st.info("최근 거래 데이터 없음")
 
 st.markdown("---")
 
 # Current Positions
-st.markdown("### 💼 Current Positions")
+st.markdown("### 💼 현재 포지션")
 
 positions = data_loader.get_open_positions()
 
@@ -166,14 +323,14 @@ if not positions.empty:
         use_container_width=True,
         hide_index=True
     )
-    st.caption(f"Total open positions: {len(positions)}")
+    st.caption(f"총 오픈 포지션: {len(positions)}")
 else:
-    st.info("No open positions")
+    st.info("오픈 포지션 없음")
 
 st.markdown("---")
 
 # Recent Trades
-st.markdown("### 📝 Recent Trades (Last 10)")
+st.markdown("### 📝 최근 거래 (최근 10개)")
 
 if not recent_trades.empty:
     recent_10 = recent_trades.head(10)
@@ -183,12 +340,12 @@ if not recent_trades.empty:
         hide_index=True
     )
 else:
-    st.info("No recent trades")
+    st.info("최근 거래 없음")
 
 st.markdown("---")
 
 # System Health
-st.markdown("### 🏥 System Health")
+st.markdown("### 🏥 시스템 상태")
 
 col1, col2, col3 = st.columns(3)
 
@@ -196,30 +353,30 @@ with col1:
     if bot_status['status'] == 'running':
         cpu = bot_status['cpu_percent']
         if cpu < 50:
-            st.success(f"CPU Usage: {cpu:.1f}% ✅")
+            st.success(f"CPU 사용량: {cpu:.1f}% ✅")
         elif cpu < 80:
-            st.warning(f"CPU Usage: {cpu:.1f}% ⚠️")
+            st.warning(f"CPU 사용량: {cpu:.1f}% ⚠️")
         else:
-            st.error(f"CPU Usage: {cpu:.1f}% ❌")
+            st.error(f"CPU 사용량: {cpu:.1f}% ❌")
     else:
-        st.info("CPU Usage: N/A (Bot stopped)")
+        st.info("CPU 사용량: N/A (봇 중지됨)")
 
 with col2:
     if bot_status['status'] == 'running':
         memory = bot_status['memory_mb']
         if memory < 500:
-            st.success(f"Memory: {memory:.1f} MB ✅")
+            st.success(f"메모리: {memory:.1f} MB ✅")
         elif memory < 1000:
-            st.warning(f"Memory: {memory:.1f} MB ⚠️")
+            st.warning(f"메모리: {memory:.1f} MB ⚠️")
         else:
-            st.error(f"Memory: {memory:.1f} MB ❌")
+            st.error(f"메모리: {memory:.1f} MB ❌")
     else:
-        st.info("Memory: N/A (Bot stopped)")
+        st.info("메모리: N/A (봇 중지됨)")
 
 with col3:
     # Circuit breaker status (would need to read from bot state)
-    st.info("Circuit Breaker: OK ✅")
+    st.info("서킷 브레이커: OK ✅")
 
 # Footer
 st.markdown("---")
-st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Auto-refresh: 30s")
+st.caption(f"마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 자동 새로고침: 30s")
