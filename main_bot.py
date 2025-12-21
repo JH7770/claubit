@@ -20,13 +20,16 @@ from typing import Optional
 import json
 import signal
 import os
+import threading
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from pytz import timezone
 
 from config.config import Config
+from config.logging_config import setup_logging, get_logger
 from modules.selector import DailyStrategySelector
 from modules.paper_trader import PaperTradingSimulator
+from modules.live_trader import LiveTradingManager
 from modules.collector import DataCollector
 from modules.executor import OrderExecutor
 from modules.notifier import TelegramNotifier
@@ -36,14 +39,13 @@ from database.init_db import DatabaseManager
 from strategies import (
     VolatilityBreakoutStrategy,
     RSIBollingerReversionStrategy,
-    VolumeWeightedMACrossStrategy
+    VolumeWeightedMACrossStrategy,
+    DynamicScalpingGridStrategy
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Initialize centralized logging
+setup_logging()
+logger = get_logger(__name__)
 
 
 class TradingBot:
@@ -99,7 +101,10 @@ class TradingBot:
                 exchange_name=self.config.EXCHANGE_NAME,
                 api_key=self.config.API_KEY,
                 api_secret=self.config.API_SECRET,
-                leverage=self.config.LEVERAGE
+                testnet=False,
+                notifier=self.notifier,
+                leverage=self.config.LEVERAGE,
+                current_strategy='Unknown'
             )
         else:
             logger.info("Paper trading mode enabled")
@@ -127,11 +132,20 @@ class TradingBot:
             'Volume_MA_Cross_Fast': VolumeWeightedMACrossStrategy,
             'Volume_MA_Cross_Standard': VolumeWeightedMACrossStrategy,
             'Volume_MA_Cross_Slow': VolumeWeightedMACrossStrategy,
+            'Scalping_Grid': DynamicScalpingGridStrategy,
+            'Scalping_Grid_Conservative': DynamicScalpingGridStrategy,
+            'Scalping_Grid_Aggressive': DynamicScalpingGridStrategy,
         }
 
         # State
         self.today_strategy = None
         self.today_strategy_instance = None
+
+        # Initialize start time for heartbeat
+        self.start_time = datetime.now()
+
+        # Task overlap prevention lock
+        self._task_lock = threading.Lock()
 
         logger.info("TradingBot initialized")
         logger.info(f"  Mode: {'LIVE' if self.config.is_live_mode() else 'PAPER'}")
@@ -157,6 +171,12 @@ class TradingBot:
                 self.executor.force_close_all_positions(reason="shutdown")
         except Exception as e:
             logger.error(f"Error closing positions during shutdown: {e}")
+
+        # Shutdown database manager
+        try:
+            self.db_manager.shutdown()
+        except Exception as e:
+            logger.error(f"Error shutting down database manager: {e}")
 
     def _update_task_status(self, task: str, status: str):
         """
@@ -254,6 +274,11 @@ class TradingBot:
 
         Updates parquet files for primary and secondary symbols.
         """
+        # Acquire task lock to prevent overlapping tasks
+        if not self._task_lock.acquire(blocking=False):
+            logger.warning("Data sync already running, skipping...")
+            return
+
         self._update_task_status('data_sync', 'started')
         self._log_activity('task_start', 'Starting data synchronization', task_name='data_sync')
 
@@ -295,11 +320,14 @@ class TradingBot:
             self._log_activity('task_end', f'Data sync failed: {str(e)}',
                               task_name='data_sync', severity='ERROR')
             if self.notifier:
-                self.notifier.send_error(
+                self.notifier.send_error_alert(
                     error_type="DATA_SYNC_ERROR",
                     error_message=str(e)
                 )
             raise
+        finally:
+            # Release lock
+            self._task_lock.release()
 
     def load_previous_strategy(self):
         """
@@ -378,9 +406,15 @@ class TradingBot:
                 strategy_class = self.strategy_class_map[base_name]
                 self.today_strategy_instance = strategy_class(params=strategy_params)
                 logger.info(f"✓ Loaded previous strategy: {strategy_class.__name__}")
+                # Update executor strategy name if in live mode
+                if self.config.is_live_mode() and hasattr(self.executor, 'current_strategy'):
+                    self.executor.current_strategy = strategy_name
             else:
                 logger.warning(f"Unknown strategy: {base_name}, using default")
                 self.today_strategy_instance = VolatilityBreakoutStrategy(params=strategy_params)
+                # Update executor strategy name if in live mode
+                if self.config.is_live_mode() and hasattr(self.executor, 'current_strategy'):
+                    self.executor.current_strategy = 'Volatility_Breakout'
 
             logger.info("="*70)
             logger.info(f"✓ LOADED PREVIOUS STRATEGY: {strategy_name}")
@@ -414,6 +448,11 @@ class TradingBot:
 
         Backtests all strategies and selects the champion.
         """
+        # Acquire task lock to prevent overlapping tasks
+        if not self._task_lock.acquire(blocking=False):
+            logger.warning("Strategy selection already running, skipping...")
+            return
+
         self._update_task_status('strategy_selection', 'started')
         self._log_activity('task_start', 'Starting strategy selection', task_name='strategy_selection')
 
@@ -444,9 +483,15 @@ class TradingBot:
                 strategy_class = self.strategy_class_map[base_name]
                 self.today_strategy_instance = strategy_class(params=strategy_params)
                 logger.info(f"✓ Loaded strategy instance: {strategy_class.__name__}")
+                # Update executor strategy name if in live mode
+                if self.config.is_live_mode() and hasattr(self.executor, 'current_strategy'):
+                    self.executor.current_strategy = strategy_name
             else:
                 logger.warning(f"Unknown strategy: {base_name}, using default")
                 self.today_strategy_instance = VolatilityBreakoutStrategy(params=strategy_params)
+                # Update executor strategy name if in live mode
+                if self.config.is_live_mode() and hasattr(self.executor, 'current_strategy'):
+                    self.executor.current_strategy = 'Volatility_Breakout'
 
             logger.info("="*70)
             logger.info(f"✓ TODAY'S CHAMPION: {result['selected_strategy']}")
@@ -467,7 +512,7 @@ class TradingBot:
             self._log_activity('task_end', f'Strategy selection failed: {str(e)}',
                               task_name='strategy_selection', severity='ERROR')
             if self.notifier:
-                self.notifier.send_error(
+                self.notifier.send_error_alert(
                     error_type="STRATEGY_SELECTION_ERROR",
                     error_message=str(e)
                 )
@@ -475,7 +520,13 @@ class TradingBot:
             # Load default strategy as fallback
             logger.warning("Loading default fallback strategy")
             self.today_strategy_instance = VolatilityBreakoutStrategy()
+            # Update executor strategy name if in live mode
+            if self.config.is_live_mode() and hasattr(self.executor, 'current_strategy'):
+                self.executor.current_strategy = 'Volatility_Breakout'
             raise
+        finally:
+            # Release lock
+            self._task_lock.release()
 
     def run_trading_session(self):
         """
@@ -483,6 +534,11 @@ class TradingBot:
 
         Uses selected strategy with paper trader or live executor.
         """
+        # Acquire task lock to prevent overlapping tasks
+        if not self._task_lock.acquire(blocking=False):
+            logger.warning("Trading session already running, skipping...")
+            return
+
         self._update_task_status('trading', 'started')
         self._log_activity('task_start', 'Starting trading session', task_name='trading')
 
@@ -490,11 +546,15 @@ class TradingBot:
         logger.info("TASK 3: Trading Session")
         logger.info("="*70)
 
+        # Load previous strategy if none selected
         if self.today_strategy_instance is None:
-            logger.error("No strategy selected! Aborting trading session.")
-            self._log_activity('task_end', 'Trading session aborted: No strategy selected',
-                              task_name='trading', severity='ERROR')
-            return
+            logger.warning("No strategy selected, attempting to load previous strategy...")
+            if not self.load_previous_strategy():
+                logger.error("Failed to load previous strategy! Aborting trading session.")
+                self._log_activity('task_end', 'Trading session aborted: No strategy available',
+                                  task_name='trading', severity='ERROR')
+                self._task_lock.release()
+                return
 
         try:
             if isinstance(self.executor, PaperTradingSimulator):
@@ -531,11 +591,20 @@ class TradingBot:
 
             else:
                 # Live trading mode
-                logger.warning("⚠ LIVE TRADING SESSION NOT YET IMPLEMENTED ⚠")
-                logger.warning("This would execute real trades on the exchange")
-                logger.warning("Implementation pending for safety reasons")
+                logger.warning("=" * 70)
+                logger.warning("⚠ LIVE TRADING MODE - REAL MONEY AT RISK ⚠")
+                logger.warning("=" * 70)
 
-                # Send session start notification (preparatory for future implementation)
+                # Initialize live trading manager
+                live_manager = LiveTradingManager(
+                    executor=self.executor,
+                    db_manager=self.db_manager,
+                    collector=self.collector,
+                    notifier=self.notifier,
+                    config=self.config
+                )
+
+                # Send session start notification
                 if self.notifier and self.today_strategy:
                     try:
                         self.notifier.send_trading_session_start(
@@ -543,8 +612,8 @@ class TradingBot:
                             strategy_name=self.today_strategy['selected_strategy'],
                             strategy_params=self.today_strategy['selected_params'],
                             symbol=self.config.PRIMARY_SYMBOL,
-                            session_duration_hours=self.config.PAPER_TRADING_SESSION_DURATION,  # Will need live equivalent
-                            initial_balance=self.config.MAX_POSITION_SIZE_USDT,  # Placeholder - will need actual balance
+                            session_duration_hours=self.config.PAPER_TRADING_SESSION_DURATION,
+                            initial_balance=self.executor.get_balance('USDT') or 0,
                             leverage=self.config.LEVERAGE,
                             max_loss_percent=self.config.MAX_DAILY_LOSS_PERCENT,
                             backtest_results=self.today_strategy.get('backtest_results'),
@@ -553,13 +622,26 @@ class TradingBot:
                     except Exception as e:
                         logger.warning(f"Failed to send session start notification: {e}")
 
-                # TODO: Implement live trading session
-                # This should:
-                # 1. Set leverage on exchange
-                # 2. Monitor prices in real-time
-                # 3. Execute strategy signals as real orders
-                # 4. Manage positions with SL/TP
-                # 5. Report results
+                # Initialize session (set leverage, check balance, clean up)
+                init_success = live_manager.initialize_session(
+                    symbol=self.config.PRIMARY_SYMBOL,
+                    leverage=self.config.LEVERAGE
+                )
+
+                if not init_success:
+                    logger.error("Failed to initialize live trading session")
+                    return
+
+                # Run live trading loop
+                live_manager.run_trading_loop(
+                    symbol=self.config.PRIMARY_SYMBOL,
+                    strategy=self.today_strategy_instance,
+                    timeframe=self.today_strategy.get('timeframe', '1m'),
+                    interval_seconds=self.config.PAPER_TRADING_POLL_INTERVAL,
+                    duration_hours=self.config.PAPER_TRADING_SESSION_DURATION
+                )
+
+                logger.info("Live trading session completed")
 
             self._update_task_status('idle', 'completed')
             self._log_activity('task_end', 'Trading session completed',
@@ -570,16 +652,24 @@ class TradingBot:
             self._log_activity('task_end', f'Trading session failed: {str(e)}',
                               task_name='trading', severity='ERROR')
             if self.notifier:
-                self.notifier.send_error(
+                self.notifier.send_error_alert(
                     error_type="TRADING_SESSION_ERROR",
                     error_message=str(e)
                 )
             raise
+        finally:
+            # Release lock
+            self._task_lock.release()
 
     def run_session_cleanup(self):
         """
         01:00+ KST: Close all positions and generate daily report.
         """
+        # Acquire task lock to prevent overlapping tasks
+        if not self._task_lock.acquire(blocking=False):
+            logger.warning("Cleanup already running, skipping...")
+            return
+
         self._update_task_status('cleanup', 'started')
         self._log_activity('task_start', 'Starting session cleanup', task_name='cleanup')
 
@@ -616,12 +706,21 @@ class TradingBot:
             self._log_activity('task_end', f'Cleanup failed: {str(e)}',
                               task_name='cleanup', severity='ERROR')
             raise
+        finally:
+            # Release lock
+            self._task_lock.release()
 
     def send_heartbeat(self):
         """Send hourly heartbeat to confirm bot is running."""
         if self.notifier:
             try:
-                self.notifier.send_heartbeat()
+                # Calculate heartbeat parameters
+                uptime_hours = (datetime.now() - self.start_time).total_seconds() / 3600
+                active_positions = len(self.db_manager.get_open_positions())
+                daily_summary = self.db_manager.get_daily_summary(datetime.now().strftime('%Y-%m-%d'))
+                pnl_today = daily_summary.get('total_pnl', 0.0) if daily_summary else 0.0
+
+                self.notifier.send_heartbeat(uptime_hours, active_positions, pnl_today)
                 logger.debug("Heartbeat sent")
             except Exception as e:
                 logger.error(f"Error sending heartbeat: {e}")
@@ -750,6 +849,8 @@ The bot will automatically execute trades at 22:30 KST.
         try:
             # Run scheduler in non-blocking mode
             self.scheduler.start()
+            # Reset start time when scheduled mode starts
+            self.start_time = datetime.now()
         except (KeyboardInterrupt, SystemExit):
             logger.info("Keyboard interrupt received, shutting down gracefully...")
             self.should_stop = True
@@ -760,6 +861,7 @@ The bot will automatically execute trades at 22:30 KST.
                 'current_task': 'idle'
             })
             self.scheduler.shutdown()
+            self.db_manager.shutdown()
             logger.info("Bot stopped")
 
 

@@ -36,6 +36,46 @@ class DatabaseManager:
         """Close database connection."""
         if self.conn:
             self.conn.close()
+            self.conn = None
+
+    def shutdown(self):
+        """Shutdown thread pool and close all connections."""
+        try:
+            self._executor.shutdown(wait=True, cancel_futures=False)
+            if self.conn:
+                self.conn.close()
+                self.conn = None
+            print("DatabaseManager shutdown complete")
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
+
+    def execute_with_retry(self, query, params=None, max_retries=5):
+        """
+        Execute query with retry on database locked error.
+
+        Args:
+            query: SQL query to execute
+            params: Query parameters (optional)
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            Cursor result
+        """
+        import time
+
+        for attempt in range(max_retries):
+            try:
+                if params:
+                    return self.conn.execute(query, params)
+                else:
+                    return self.conn.execute(query)
+            except sqlite3.OperationalError as e:
+                if 'database is locked' in str(e) and attempt < max_retries - 1:
+                    wait_time = 0.1 * (2 ** attempt)  # Exponential backoff
+                    print(f"Database locked, retrying in {wait_time:.2f}s (attempt {attempt+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                raise
 
     def get_connection(self):
         """
@@ -352,61 +392,67 @@ class DatabaseManager:
     def log_trade(self, trade_data: dict):
         """Log a completed trade to database."""
         self.connect()
-        self.conn.execute("""
-            INSERT INTO trade_history
-            (timestamp, symbol, side, entry_price, exit_price, amount, leverage,
-             pnl, pnl_percent, strategy_name, exit_reason, paper_trading)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            trade_data.get('timestamp', datetime.now()),
-            trade_data['symbol'],
-            trade_data['side'],
-            trade_data['entry_price'],
-            trade_data['exit_price'],
-            trade_data['amount'],
-            trade_data.get('leverage', 1),
-            trade_data['pnl'],
-            trade_data['pnl_percent'],
-            trade_data.get('strategy_name', 'Unknown'),
-            trade_data.get('exit_reason', 'Manual'),
-            trade_data.get('paper_trading', False)
-        ))
-        self.conn.commit()
-        self.close()
+        try:
+            self.conn.execute("""
+                INSERT INTO trade_history
+                (timestamp, symbol, side, entry_price, exit_price, amount, leverage,
+                 pnl, pnl_percent, strategy_name, exit_reason, paper_trading)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                trade_data.get('timestamp', datetime.now()),
+                trade_data['symbol'],
+                trade_data['side'],
+                trade_data['entry_price'],
+                trade_data['exit_price'],
+                trade_data['amount'],
+                trade_data.get('leverage', 1),
+                trade_data['pnl'],
+                trade_data['pnl_percent'],
+                trade_data.get('strategy_name', 'Unknown'),
+                trade_data.get('exit_reason', 'Manual'),
+                trade_data.get('paper_trading', False)
+            ))
+            self.conn.commit()
+        finally:
+            self.close()
 
     def get_daily_trades(self, date: str):
         """Get all trades for a specific date."""
         self.connect()
-        cursor = self.conn.execute("""
-            SELECT * FROM trade_history
-            WHERE DATE(timestamp) = ?
-            ORDER BY timestamp DESC
-        """, (date,))
-        trades = cursor.fetchall()
-        self.close()
-        return trades
+        try:
+            cursor = self.conn.execute("""
+                SELECT * FROM trade_history
+                WHERE DATE(timestamp) = ?
+                ORDER BY timestamp DESC
+            """, (date,))
+            trades = cursor.fetchall()
+            return trades
+        finally:
+            self.close()
 
     def update_daily_summary(self, summary_data: dict):
         """Update or insert daily summary."""
         self.connect()
-        self.conn.execute("""
-            INSERT OR REPLACE INTO daily_summary
-            (date, total_pnl, total_trades, winning_trades, losing_trades,
-             win_rate, strategy_used, starting_balance, ending_balance)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            summary_data['date'],
-            summary_data['total_pnl'],
-            summary_data['total_trades'],
-            summary_data['winning_trades'],
-            summary_data['losing_trades'],
-            summary_data['win_rate'],
-            summary_data['strategy_used'],
-            summary_data['starting_balance'],
-            summary_data['ending_balance']
-        ))
-        self.conn.commit()
-        self.close()
+        try:
+            self.conn.execute("""
+                INSERT OR REPLACE INTO daily_summary
+                (date, total_pnl, total_trades, winning_trades, losing_trades,
+                 win_rate, strategy_used, starting_balance, ending_balance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                summary_data['date'],
+                summary_data['total_pnl'],
+                summary_data['total_trades'],
+                summary_data['winning_trades'],
+                summary_data['losing_trades'],
+                summary_data['win_rate'],
+                summary_data['strategy_used'],
+                summary_data['starting_balance'],
+                summary_data['ending_balance']
+            ))
+            self.conn.commit()
+        finally:
+            self.close()
 
     def save_optimization_run(self, run_data: dict):
         """
@@ -423,22 +469,24 @@ class DatabaseManager:
                 - duration_seconds: Optimization duration
         """
         self.connect()
-        self.conn.execute("""
-            INSERT INTO optimization_runs
-            (date, strategy_name, n_trials, best_score, best_params,
-             objective_metric, duration_seconds)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            run_data['date'],
-            run_data['strategy_name'],
-            run_data['n_trials'],
-            run_data['best_score'],
-            run_data['best_params'],
-            run_data['objective_metric'],
-            run_data['duration_seconds']
-        ))
-        self.conn.commit()
-        self.close()
+        try:
+            self.conn.execute("""
+                INSERT INTO optimization_runs
+                (date, strategy_name, n_trials, best_score, best_params,
+                 objective_metric, duration_seconds)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                run_data['date'],
+                run_data['strategy_name'],
+                run_data['n_trials'],
+                run_data['best_score'],
+                run_data['best_params'],
+                run_data['objective_metric'],
+                run_data['duration_seconds']
+            ))
+            self.conn.commit()
+        finally:
+            self.close()
 
     def save_backtest_result(self, result_data: dict):
         """
@@ -459,26 +507,28 @@ class DatabaseManager:
                 - rank: Ranking (optional)
         """
         self.connect()
-        self.conn.execute("""
-            INSERT INTO backtest_results
-            (date, strategy_name, params, total_return, win_rate,
-             profit_factor, max_drawdown, sharpe_ratio, total_trades, score, rank)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            result_data['date'],
-            result_data['strategy_name'],
-            result_data['params'],
-            result_data['total_return'],
-            result_data['win_rate'],
-            result_data['profit_factor'],
-            result_data['max_drawdown'],
-            result_data['sharpe_ratio'],
-            result_data['total_trades'],
-            result_data['score'],
-            result_data.get('rank', 0)
-        ))
-        self.conn.commit()
-        self.close()
+        try:
+            self.conn.execute("""
+                INSERT INTO backtest_results
+                (date, strategy_name, params, total_return, win_rate,
+                 profit_factor, max_drawdown, sharpe_ratio, total_trades, score, rank)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                result_data['date'],
+                result_data['strategy_name'],
+                result_data['params'],
+                result_data['total_return'],
+                result_data['win_rate'],
+                result_data['profit_factor'],
+                result_data['max_drawdown'],
+                result_data['sharpe_ratio'],
+                result_data['total_trades'],
+                result_data['score'],
+                result_data.get('rank', 0)
+            ))
+            self.conn.commit()
+        finally:
+            self.close()
 
     def get_best_strategy_for_date(self, date: str):
         """
@@ -491,18 +541,20 @@ class DatabaseManager:
             Dictionary with strategy data, or None if not found
         """
         self.connect()
-        cursor = self.conn.execute("""
-            SELECT * FROM backtest_results
-            WHERE date = ?
-            ORDER BY score DESC
-            LIMIT 1
-        """, (date,))
-        result = cursor.fetchone()
-        self.close()
+        try:
+            cursor = self.conn.execute("""
+                SELECT * FROM backtest_results
+                WHERE date = ?
+                ORDER BY score DESC
+                LIMIT 1
+            """, (date,))
+            result = cursor.fetchone()
 
-        if result:
-            return dict(result)
-        return None
+            if result:
+                return dict(result)
+            return None
+        finally:
+            self.close()
 
     def get_recent_backtest_results(self, days: int = 7):
         """
@@ -515,14 +567,16 @@ class DatabaseManager:
             List of backtest results
         """
         self.connect()
-        cursor = self.conn.execute("""
-            SELECT * FROM backtest_results
-            WHERE date >= date('now', '-' || ? || ' days')
-            ORDER BY date DESC, score DESC
-        """, (days,))
-        results = cursor.fetchall()
-        self.close()
-        return [dict(row) for row in results]
+        try:
+            cursor = self.conn.execute("""
+                SELECT * FROM backtest_results
+                WHERE date >= date('now', '-' || ? || ' days')
+                ORDER BY date DESC, score DESC
+            """, (days,))
+            results = cursor.fetchall()
+            return [dict(row) for row in results]
+        finally:
+            self.close()
 
     def get_strategy_by_name(self, strategy_name: str):
         """
@@ -535,16 +589,18 @@ class DatabaseManager:
             Dictionary with strategy data, or None if not found
         """
         self.connect()
-        cursor = self.conn.execute("""
-            SELECT * FROM strategy_pool
-            WHERE strategy_name = ?
-        """, (strategy_name,))
-        result = cursor.fetchone()
-        self.close()
+        try:
+            cursor = self.conn.execute("""
+                SELECT * FROM strategy_pool
+                WHERE strategy_name = ?
+            """, (strategy_name,))
+            result = cursor.fetchone()
 
-        if result:
-            return dict(result)
-        return None
+            if result:
+                return dict(result)
+            return None
+        finally:
+            self.close()
 
     def update_bot_status(self, status_data: dict):
         """
@@ -599,8 +655,16 @@ class DatabaseManager:
             finally:
                 conn.close()
 
+        def _handle_write_error(future):
+            """Callback to handle async write errors."""
+            try:
+                future.result()  # This will raise if the write failed
+            except Exception as e:
+                print(f"Async bot status write failed: {e}")
+
         # Submit to thread pool for async execution
-        self._executor.submit(_write)
+        future = self._executor.submit(_write)
+        future.add_done_callback(_handle_write_error)
 
     def log_activity(self, event_type: str, message: str, **kwargs):
         """
@@ -679,8 +743,98 @@ class DatabaseManager:
             finally:
                 conn.close()
 
+        def _handle_write_error(future):
+            """Callback to handle async write errors."""
+            try:
+                future.result()  # This will raise if the write failed
+            except Exception as e:
+                print(f"Async trading signal write failed: {e}")
+
         # Submit to thread pool for async execution
-        self._executor.submit(_write)
+        future = self._executor.submit(_write)
+        future.add_done_callback(_handle_write_error)
+
+    def save_position(self, position_data: dict) -> int:
+        """
+        Save new position to database.
+
+        Args:
+            position_data: Dictionary with position data
+
+        Returns:
+            ID of the inserted position
+        """
+        self.connect()
+        try:
+            cursor = self.conn.execute("""
+                INSERT INTO positions
+                (symbol, side, entry_price, amount, leverage, stop_loss, 
+                 take_profit, strategy_name, status, opened_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                position_data['symbol'],
+                position_data['side'],
+                position_data['entry_price'],
+                position_data['amount'],
+                position_data.get('leverage', 1),
+                position_data.get('stop_loss'),
+                position_data.get('take_profit'),
+                position_data.get('strategy_name'),
+                'open',
+                position_data.get('opened_at', datetime.now())
+            ))
+            self.conn.commit()
+            return cursor.lastrowid
+        finally:
+            self.close()
+
+    def update_position(self, position_id: int, updates: dict):
+        """
+        Update existing position.
+
+        Args:
+            position_id: ID of the position to update
+            updates: Dictionary with fields to update
+        """
+        self.connect()
+        try:
+            update_fields = []
+            values = []
+            for key, value in updates.items():
+                update_fields.append(f"{key} = ?")
+                values.append(value)
+
+            values.append(position_id)
+
+            self.conn.execute(
+                f"UPDATE positions SET {', '.join(update_fields)} WHERE id = ?",
+                values
+            )
+            self.conn.commit()
+        finally:
+            self.close()
+
+    def close_position_db(self, symbol: str, strategy_name: Optional[str] = None):
+        """
+        Mark position as closed in database.
+
+        Args:
+            symbol: Trading symbol
+            strategy_name: Optional strategy name to be specific
+        """
+        self.connect()
+        try:
+            query = "UPDATE positions SET status = 'closed' WHERE symbol = ? AND status = 'open'"
+            params = [symbol]
+
+            if strategy_name:
+                query += " AND strategy_name = ?"
+                params.append(strategy_name)
+
+            self.conn.execute(query, params)
+            self.conn.commit()
+        finally:
+            self.close()
 
     def get_recent_activity(self, limit: int = 50, event_category: Optional[str] = None):
         """
@@ -694,20 +848,22 @@ class DatabaseManager:
             List of activity log dictionaries
         """
         self.connect()
-        query = "SELECT * FROM activity_log"
-        params = []
+        try:
+            query = "SELECT * FROM activity_log"
+            params = []
 
-        if event_category:
-            query += " WHERE event_category = ?"
-            params.append(event_category)
+            if event_category:
+                query += " WHERE event_category = ?"
+                params.append(event_category)
 
-        query += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(limit)
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
 
-        cursor = self.conn.execute(query, params)
-        results = [dict(row) for row in cursor.fetchall()]
-        self.close()
-        return results
+            cursor = self.conn.execute(query, params)
+            results = [dict(row) for row in cursor.fetchall()]
+            return results
+        finally:
+            self.close()
 
     def get_latest_signals(self, symbol: Optional[str] = None, limit: int = 10):
         """
@@ -721,20 +877,22 @@ class DatabaseManager:
             List of signal dictionaries
         """
         self.connect()
-        query = "SELECT * FROM trading_signals"
-        params = []
+        try:
+            query = "SELECT * FROM trading_signals"
+            params = []
 
-        if symbol:
-            query += " WHERE symbol = ?"
-            params.append(symbol)
+            if symbol:
+                query += " WHERE symbol = ?"
+                params.append(symbol)
 
-        query += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(limit)
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
 
-        cursor = self.conn.execute(query, params)
-        results = [dict(row) for row in cursor.fetchall()]
-        self.close()
-        return results
+            cursor = self.conn.execute(query, params)
+            results = [dict(row) for row in cursor.fetchall()]
+            return results
+        finally:
+            self.close()
 
     def reset_database(self):
         """Drop all tables and recreate them. WARNING: This deletes all data!"""

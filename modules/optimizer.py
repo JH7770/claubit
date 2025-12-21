@@ -497,3 +497,40 @@ VOLUME_MA_CROSS_SPACE = {
         'step': 1.0
     },
 }
+
+SCALPING_GRID_SPACE = {
+    'grid_lines': {
+        'type': 'categorical',
+        'choices': [3, 4, 5]
+    },
+    'gap_percent': {
+        'type': 'categorical',
+        'choices': [0.2, 0.3, 0.4, 0.5]
+    },
+    'atr_period': {
+        'type': 'categorical',
+        'choices': [10, 14, 20]
+    },
+    'atr_multiplier': {
+        'type': 'categorical',
+        'choices': [0.5, 1.0, 1.5, 2.0]
+    },
+    'use_dynamic_gap': {
+        'type': 'categorical',
+        'choices': [True, False]
+    },
+    'stop_trigger_percent': {
+        'type': 'categorical',
+        'choices': [1.0, 1.5, 2.0, 2.5, 3.0]
+    },
+    'stop_loss_percent': {
+        'type': 'float',
+        'low': 2.0,
+        'high': 4.0,
+        'step': 0.5
+    },
+    'take_profit_percent': {
+        'type': 'categorical',
+        'choices': [0.2, 0.3, 0.4, 0.5]
+    },
+}

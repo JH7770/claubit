@@ -8,8 +8,12 @@ import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
 import time
+from utils.retry import retry_ccxt_call
 from typing import Optional, List
 import pytz
+from config.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class DataCollector:
@@ -36,12 +40,14 @@ class DataCollector:
             'apiKey': api_key,
             'secret': api_secret,
             'enableRateLimit': True,
+            'timeout': 30000,  # 30 seconds timeout
             'options': {
                 'defaultType': 'future',  # Use futures market
             }
         })
         return exchange
 
+    @retry_ccxt_call(max_retries=3, backoff_factor=2)
     def fetch_ohlcv(
         self,
         symbol: str,
@@ -80,7 +86,7 @@ class DataCollector:
             return df
 
         except Exception as e:
-            print(f"Error fetching OHLCV data: {e}")
+            logger.error(f"Error fetching OHLCV data: {e}")
             raise
 
     def download_historical_data(
@@ -102,7 +108,7 @@ class DataCollector:
         Returns:
             DataFrame with historical OHLCV data
         """
-        print(f"Downloading {days} days of {timeframe} data for {symbol}...")
+        logger.info(f"Downloading {days} days of {timeframe} data for {symbol}...")
 
         end_time = datetime.now(pytz.UTC)
         start_time = end_time - timedelta(days=days)
@@ -129,15 +135,15 @@ class DataCollector:
                 # Rate limiting
                 time.sleep(self.exchange.rateLimit / 1000)
 
-                print(f"Downloaded up to {df.index[-1]}")
+                logger.debug(f"Downloaded up to {df.index[-1]}")
 
             except Exception as e:
-                print(f"Error during download: {e}")
+                logger.error(f"Error during download: {e}")
                 time.sleep(5)
                 continue
 
         if not all_data:
-            print("No data downloaded")
+            logger.warning("No data downloaded")
             return pd.DataFrame()
 
         # Combine all data
@@ -145,14 +151,14 @@ class DataCollector:
         combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
         combined_df.sort_index(inplace=True)
 
-        print(f"Downloaded {len(combined_df)} candles from {combined_df.index[0]} to {combined_df.index[-1]}")
+        logger.info(f"Downloaded {len(combined_df)} candles from {combined_df.index[0]} to {combined_df.index[-1]}")
 
         # Save to file
         if save_to_file:
             filename = self._generate_filename(symbol, timeframe)
             filepath = self.data_dir / filename
             combined_df.to_parquet(filepath)
-            print(f"Saved to {filepath}")
+            logger.info(f"Saved to {filepath}")
 
         return combined_df
 
@@ -175,7 +181,7 @@ class DataCollector:
             df_existing = pd.read_parquet(filepath)
             last_timestamp = df_existing.index[-1]
 
-            print(f"Updating data from {last_timestamp}...")
+            logger.info(f"Updating data from {last_timestamp}...")
 
             # Fetch new data
             df_new = self.fetch_ohlcv(
@@ -193,14 +199,14 @@ class DataCollector:
 
                 # Save updated data
                 df_combined.to_parquet(filepath)
-                print(f"Updated {len(df_new)} new candles")
+                logger.info(f"Updated {len(df_new)} new candles")
 
                 return df_combined
             else:
-                print("No new data available")
+                logger.info("No new data available")
                 return df_existing
         else:
-            print(f"No existing data found. Downloading historical data...")
+            logger.info(f"No existing data found. Downloading historical data...")
             return self.download_historical_data(symbol, timeframe, days=30)
 
     def load_data(self, symbol: str, timeframe: str = '1m') -> Optional[pd.DataFrame]:
@@ -220,9 +226,10 @@ class DataCollector:
         if filepath.exists():
             return pd.read_parquet(filepath)
         else:
-            print(f"Data file not found: {filepath}")
+            logger.warning(f"Data file not found: {filepath}")
             return None
 
+    @retry_ccxt_call(max_retries=3, backoff_factor=2)
     def get_latest_price(self, symbol: str) -> float:
         """
         Get the latest price for a symbol.
@@ -236,6 +243,7 @@ class DataCollector:
         ticker = self.exchange.fetch_ticker(symbol)
         return ticker['last']
 
+    @retry_ccxt_call(max_retries=3, backoff_factor=2)
     def get_orderbook(self, symbol: str, limit: int = 20) -> dict:
         """
         Get current orderbook (bid/ask).
@@ -271,13 +279,16 @@ class DataCollector:
 
 if __name__ == "__main__":
     # Test the collector
+    from config.logging_config import setup_logging
+    setup_logging()
+
     collector = DataCollector('binance')
 
     # Download sample data
     df = collector.download_historical_data('BTC/USDT', timeframe='1m', days=1)
-    print(df.head())
-    print(f"\nTotal candles: {len(df)}")
+    logger.info(f"\n{df.head()}")
+    logger.info(f"Total candles: {len(df)}")
 
     # Test latest price
     price = collector.get_latest_price('BTC/USDT')
-    print(f"\nLatest BTC/USDT price: ${price:,.2f}")
+    logger.info(f"Latest BTC/USDT price: ${price:,.2f}")

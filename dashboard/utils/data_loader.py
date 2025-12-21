@@ -74,23 +74,130 @@ class DashboardDataLoader:
     @st.cache_data(ttl=10, show_spinner=False)
     def get_open_positions(_self) -> pd.DataFrame:
         """
-        Get all open positions.
+        Get all open positions with calculated metrics.
 
         Returns:
-            DataFrame with open positions
+            DataFrame with open positions including derived metrics
         """
         try:
             conn = _self._get_connection()
             df = pd.read_sql_query("""
-                SELECT * FROM positions
-                WHERE status = 'open'
-                ORDER BY opened_at DESC
+                SELECT
+                    p.*,
+                    ((p.entry_price * p.amount) / p.leverage) as margin_used,
+                    CAST((julianday('now') - julianday(p.opened_at)) * 24 * 60 AS INTEGER) as duration_minutes
+                FROM positions p
+                WHERE p.status = 'open'
+                ORDER BY p.opened_at DESC
             """, conn)
             conn.close()
+
+            # Add Python calculations for complex metrics
+            if not df.empty:
+                # Initialize calculated columns with default values if they don't exist
+                if 'unrealized_pnl' not in df.columns:
+                    df['unrealized_pnl'] = 0.0
+                if 'mark_price' not in df.columns:
+                    df['mark_price'] = df['entry_price']  # Default to entry price
+
+                # Unrealized PNL percentage (safe calculation)
+                df['unrealized_pnl_percent'] = df.apply(
+                    lambda row: ((row['unrealized_pnl'] / (row['entry_price'] * row['amount'])) * 100)
+                                if (row['entry_price'] * row['amount']) != 0 else 0,
+                    axis=1
+                )
+
+                # Risk/Reward ratio (safe calculation)
+                def safe_rr_ratio(row):
+                    import math
+                    if pd.isna(row.get('stop_loss')) or pd.isna(row.get('take_profit')):
+                        return 0
+                    denominator = abs(row['entry_price'] - row['stop_loss'])
+                    if denominator == 0:
+                        return 0
+                    numerator = abs(row['take_profit'] - row['entry_price'])
+                    result = numerator / denominator
+                    return result if not (math.isinf(result) or math.isnan(result)) else 0
+
+                df['rr_ratio'] = df.apply(safe_rr_ratio, axis=1)
+
+                # Distance to SL/TP in percentage (safe calculation)
+                df['distance_to_sl_percent'] = df.apply(
+                    lambda row: ((row['mark_price'] - row['stop_loss']) / row['mark_price']) * 100
+                                if row['mark_price'] != 0 and not pd.isna(row.get('stop_loss')) else 0,
+                    axis=1
+                )
+                df['distance_to_tp_percent'] = df.apply(
+                    lambda row: ((row['take_profit'] - row['mark_price']) / row['mark_price']) * 100
+                                if row['mark_price'] != 0 and not pd.isna(row.get('take_profit')) else 0,
+                    axis=1
+                )
+
+                # Position sizing metrics
+                df['position_value'] = df['entry_price'] * df['amount'] * df['leverage']
+                df['max_risk'] = df.apply(
+                    lambda row: abs(row['entry_price'] - row['stop_loss']) * row['amount'] * row['leverage']
+                                if not pd.isna(row.get('stop_loss')) else 0,
+                    axis=1
+                )
+                df['potential_profit'] = df.apply(
+                    lambda row: abs(row['take_profit'] - row['entry_price']) * row['amount'] * row['leverage']
+                                if not pd.isna(row.get('take_profit')) else 0,
+                    axis=1
+                )
+
             return df
         except Exception as e:
             st.warning(f"Error loading positions: {e}")
             return pd.DataFrame()
+
+    @st.cache_data(ttl=5, show_spinner=False)
+    def get_position_details(_self, position_id: int) -> Optional[Dict]:
+        """
+        Get comprehensive details for a specific position.
+        Includes entry indicators and strategy parameters.
+
+        Args:
+            position_id: Position ID
+
+        Returns:
+            Dict with position details or None if not found
+        """
+        try:
+            conn = _self._get_connection()
+
+            # JOIN with trading_signals and backtest_results to get additional context
+            query = """
+                SELECT
+                    p.*,
+                    ts.indicators as entry_indicators,
+                    ts.signal as entry_signal,
+                    br.params as strategy_params
+                FROM positions p
+                LEFT JOIN trading_signals ts ON
+                    p.symbol = ts.symbol AND
+                    p.strategy_name = ts.strategy_name AND
+                    datetime(p.opened_at) >= datetime(ts.timestamp, '-1 minute') AND
+                    datetime(p.opened_at) <= datetime(ts.timestamp, '+1 minute')
+                LEFT JOIN backtest_results br ON
+                    p.strategy_name = br.strategy_name AND
+                    br.rank = 1
+                WHERE p.id = ?
+                ORDER BY ts.timestamp DESC
+                LIMIT 1
+            """
+
+            cursor = conn.execute(query, (position_id,))
+            result = cursor.fetchone()
+            conn.close()
+
+            if result:
+                # Convert sqlite3.Row to dict
+                return {key: result[key] for key in result.keys()}
+            return None
+        except Exception as e:
+            st.warning(f"Error loading position details: {e}")
+            return None
 
     @st.cache_data(ttl=60, show_spinner=False)
     def get_today_strategy(_self, date: Optional[str] = None) -> Optional[Dict]:

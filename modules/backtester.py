@@ -10,7 +10,10 @@ import numpy as np
 from typing import Dict, Optional
 from datetime import datetime
 import warnings
+from config.logging_config import get_logger
+
 warnings.filterwarnings('ignore')
+logger = get_logger(__name__)
 
 
 class VectorizedBacktester:
@@ -401,27 +404,27 @@ class VectorizedBacktester:
             metrics: Dictionary with performance metrics
             verbose: If True, print detailed trade log
         """
-        print("=" * 70)
-        print("BACKTEST RESULTS")
-        print("=" * 70)
-        print(f"Initial Balance:     ${self.initial_balance:,.2f}")
-        print(f"Final Equity:        ${metrics['final_equity']:,.2f}")
-        print(f"Total Return:        {metrics['total_return']:>10.2f}%")
-        print(f"Win Rate:            {metrics['win_rate']:>10.2f}%")
-        print(f"Profit Factor:       {metrics['profit_factor']:>10.2f}")
-        print(f"Max Drawdown:        {metrics['max_drawdown']:>10.2f}%")
-        print(f"Sharpe Ratio:        {metrics['sharpe_ratio']:>10.2f}")
-        print("-" * 70)
-        print(f"Total Trades:        {metrics['total_trades']:>10}")
-        print(f"Winning Trades:      {metrics['winning_trades']:>10}")
-        print(f"Losing Trades:       {metrics['losing_trades']:>10}")
-        print(f"Avg Win:             {metrics['avg_win']:>10.2f}%")
-        print(f"Avg Loss:            {metrics['avg_loss']:>10.2f}%")
-        print(f"Avg Bars Held:       {metrics['avg_bars_held']:>10.1f}")
-        print("-" * 70)
-        print(f"Composite Score:     {metrics['score']:>10.2f}")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("BACKTEST RESULTS")
+        logger.info("=" * 70)
+        logger.info(f"Initial Balance:     ${self.initial_balance:,.2f}")
+        logger.info(f"Final Equity:        ${metrics['final_equity']:,.2f}")
+        logger.info(f"Total Return:        {metrics['total_return']:>10.2f}%")
+        logger.info(f"Win Rate:            {metrics['win_rate']:>10.2f}%")
+        logger.info(f"Profit Factor:       {metrics['profit_factor']:>10.2f}")
+        logger.info(f"Max Drawdown:        {metrics['max_drawdown']:>10.2f}%")
+        logger.info(f"Sharpe Ratio:        {metrics['sharpe_ratio']:>10.2f}")
+        logger.info("-" * 70)
+        logger.info(f"Total Trades:        {metrics['total_trades']:>10}")
+        logger.info(f"Winning Trades:      {metrics['winning_trades']:>10}")
+        logger.info(f"Losing Trades:       {metrics['losing_trades']:>10}")
+        logger.info(f"Avg Win:             {metrics['avg_win']:>10.2f}%")
+        logger.info(f"Avg Loss:            {metrics['avg_loss']:>10.2f}%")
+        logger.info(f"Avg Bars Held:       {metrics['avg_bars_held']:>10.1f}")
+        logger.info("-" * 70)
+        logger.info(f"Composite Score:     {metrics['score']:>10.2f}")
+        logger.info("=" * 70)
 
         if verbose and len(metrics['trade_log']) > 0:
-            print("\nTRADE LOG (First 10 trades):")
-            print(metrics['trade_log'].head(10).to_string())
+            logger.info("\nTRADE LOG (First 10 trades):")
+            logger.info(metrics['trade_log'].head(10).to_string())

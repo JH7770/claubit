@@ -4,9 +4,16 @@ Handles order execution and position management using CCXT.
 """
 
 import ccxt
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, TYPE_CHECKING
 from datetime import datetime
 import time
+from utils.retry import retry_ccxt_call
+from config.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from modules.notifier import TelegramNotifier
 
 
 class OrderExecutor:
@@ -17,7 +24,10 @@ class OrderExecutor:
         exchange_name: str = 'binance',
         api_key: str = '',
         api_secret: str = '',
-        testnet: bool = False
+        testnet: bool = False,
+        notifier: Optional['TelegramNotifier'] = None,
+        leverage: Optional[int] = None,
+        current_strategy: Optional[str] = None
     ):
         """
         Initialize the order executor.
@@ -27,9 +37,15 @@ class OrderExecutor:
             api_key: API key
             api_secret: API secret
             testnet: Whether to use testnet/sandbox
+            notifier: Optional TelegramNotifier for trade alerts
+            leverage: Leverage multiplier for context
+            current_strategy: Current strategy name for notifications
         """
         self.exchange_name = exchange_name
         self.testnet = testnet
+        self.notifier = notifier
+        self.leverage = leverage or 10
+        self.current_strategy = current_strategy or 'Manual'
         self.exchange = self._initialize_exchange(exchange_name, api_key, api_secret, testnet)
 
     def _initialize_exchange(
@@ -46,6 +62,7 @@ class OrderExecutor:
             'apiKey': api_key,
             'secret': api_secret,
             'enableRateLimit': True,
+            'timeout': 30000,  # 30 seconds timeout
             'options': {
                 'defaultType': 'future',  # Use futures market
             }
@@ -71,12 +88,13 @@ class OrderExecutor:
         """
         try:
             self.exchange.set_leverage(leverage, symbol)
-            print(f"Set leverage to {leverage}x for {symbol}")
+            logger.info(f"Set leverage to {leverage}x for {symbol}")
             return True
         except Exception as e:
-            print(f"Error setting leverage: {e}")
+            logger.error(f"Error setting leverage: {e}")
             return False
 
+    @retry_ccxt_call(max_retries=3, backoff_factor=2)
     def create_market_order(
         self,
         symbol: str,
@@ -103,15 +121,36 @@ class OrderExecutor:
 
             order = self.exchange.create_market_order(symbol, side, amount, params)
 
-            print(f"Market order created: {side.upper()} {amount} {symbol}")
-            print(f"Order ID: {order['id']}")
+            logger.info(f"Market order created: {side.upper()} {amount} {symbol}")
+            logger.info(f"Order ID: {order['id']}")
+
+            # Send buy notification for position entries (not exits)
+            if self.notifier and not reduce_only and side.lower() == 'buy':
+                try:
+                    fill_price = order.get('average', order.get('price', 0))
+                    if fill_price and fill_price > 0:
+                        self.notifier.send_buy_order(
+                            symbol=symbol,
+                            side='long',  # buy = long position in futures
+                            entry_price=fill_price,
+                            amount=amount,
+                            leverage=self.leverage,
+                            strategy=self.current_strategy,
+                            stop_loss=None,  # SL/TP set separately
+                            take_profit=None,
+                            order_type="MARKET",
+                            is_paper=False
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to send buy notification: {e}")
 
             return order
 
         except Exception as e:
-            print(f"Error creating market order: {e}")
+            logger.error(f"Error creating market order: {e}")
             return None
 
+    @retry_ccxt_call(max_retries=3, backoff_factor=2)
     def create_limit_order(
         self,
         symbol: str,
@@ -140,13 +179,13 @@ class OrderExecutor:
 
             order = self.exchange.create_limit_order(symbol, side, amount, price, params)
 
-            print(f"Limit order created: {side.upper()} {amount} {symbol} @ ${price}")
-            print(f"Order ID: {order['id']}")
+            logger.info(f"Limit order created: {side.upper()} {amount} {symbol} @ ${price}")
+            logger.info(f"Order ID: {order['id']}")
 
             return order
 
         except Exception as e:
-            print(f"Error creating limit order: {e}")
+            logger.error(f"Error creating limit order: {e}")
             return None
 
     def cancel_order(self, order_id: str, symbol: str) -> bool:
@@ -162,11 +201,11 @@ class OrderExecutor:
         """
         try:
             self.exchange.cancel_order(order_id, symbol)
-            print(f"Order {order_id} cancelled successfully")
+            logger.info(f"Order {order_id} cancelled successfully")
             return True
 
         except Exception as e:
-            print(f"Error cancelling order: {e}")
+            logger.error(f"Error cancelling order: {e}")
             return False
 
     def cancel_all_orders(self, symbol: Optional[str] = None) -> bool:
@@ -182,20 +221,21 @@ class OrderExecutor:
         try:
             if symbol:
                 self.exchange.cancel_all_orders(symbol)
-                print(f"All orders for {symbol} cancelled")
+                logger.info(f"All orders for {symbol} cancelled")
             else:
                 # Cancel orders for all symbols
                 open_orders = self.get_open_orders()
                 for order in open_orders:
                     self.cancel_order(order['id'], order['symbol'])
-                print("All orders cancelled")
+                logger.info("All orders cancelled")
 
             return True
 
         except Exception as e:
-            print(f"Error cancelling orders: {e}")
+            logger.error(f"Error cancelling orders: {e}")
             return False
 
+    @retry_ccxt_call(max_retries=3, backoff_factor=2)
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:
         """
         Get all open orders.
@@ -211,9 +251,10 @@ class OrderExecutor:
             return orders
 
         except Exception as e:
-            print(f"Error fetching open orders: {e}")
+            logger.error(f"Error fetching open orders: {e}")
             return []
 
+    @retry_ccxt_call(max_retries=3, backoff_factor=2)
     def get_position(self, symbol: str) -> Optional[Dict]:
         """
         Get current position for a symbol.
@@ -242,7 +283,7 @@ class OrderExecutor:
             return None
 
         except Exception as e:
-            print(f"Error fetching position: {e}")
+            logger.error(f"Error fetching position: {e}")
             return None
 
     def close_position(self, symbol: str) -> bool:
@@ -259,7 +300,7 @@ class OrderExecutor:
             position = self.get_position(symbol)
 
             if not position:
-                print(f"No open position for {symbol}")
+                logger.info(f"No open position for {symbol}")
                 return False
 
             # Determine close side (opposite of position side)
@@ -270,13 +311,13 @@ class OrderExecutor:
             order = self.create_market_order(symbol, close_side, amount, reduce_only=True)
 
             if order:
-                print(f"Position closed for {symbol}")
+                logger.info(f"Position closed for {symbol}")
                 return True
             else:
                 return False
 
         except Exception as e:
-            print(f"Error closing position: {e}")
+            logger.error(f"Error closing position: {e}")
             return False
 
     def close_all_positions(self, reason: str = "manual") -> Dict[str, any]:
@@ -308,7 +349,7 @@ class OrderExecutor:
             active_positions = [pos for pos in positions if float(pos.get('contracts', 0)) != 0]
 
             if not active_positions:
-                print("No active positions to close")
+                logger.info("No active positions to close")
                 return {
                     'success': True,
                     'positions_closed': 0,
@@ -341,23 +382,23 @@ class OrderExecutor:
                             'order_id': order['id']
                         })
                         total_pnl += unrealized_pnl
-                        print(f"Closed position: {symbol} {side} ({contracts} contracts), PNL: ${unrealized_pnl:.2f}")
+                        logger.info(f"Closed position: {symbol} {side} ({contracts} contracts), PNL: ${unrealized_pnl:.2f}")
                     else:
                         errors.append({
                             'symbol': symbol,
                             'error': 'Order creation failed'
                         })
-                        print(f"Failed to close position: {symbol}")
+                        logger.info(f"Failed to close position: {symbol}")
 
                 except Exception as e:
                     errors.append({
                         'symbol': position.get('symbol', 'Unknown'),
                         'error': str(e)
                     })
-                    print(f"Error closing position {position.get('symbol', 'Unknown')}: {e}")
+                    logger.error(f"Error closing position {position.get('symbol', 'Unknown')}: {e}")
 
         except Exception as e:
-            print(f"Error fetching positions: {e}")
+            logger.error(f"Error fetching positions: {e}")
             errors.append({
                 'symbol': 'ALL',
                 'error': f'Failed to fetch positions: {str(e)}'
@@ -393,7 +434,7 @@ class OrderExecutor:
 
         position = self.get_position(symbol)
         if not position:
-            print(f"No open position for {symbol}")
+            logger.info(f"No open position for {symbol}")
             return result
 
         amount = abs(position['contracts'])
@@ -414,11 +455,11 @@ class OrderExecutor:
                     None,
                     params
                 )
-                print(f"Stop Loss set at ${stop_loss_price}")
+                logger.info(f"Stop Loss set at ${stop_loss_price}")
                 result['stop_loss'] = True
 
             except Exception as e:
-                print(f"Error setting stop loss: {e}")
+                logger.error(f"Error setting stop loss: {e}")
 
         # Set Take Profit
         if take_profit_price:
@@ -435,11 +476,11 @@ class OrderExecutor:
                     None,
                     params
                 )
-                print(f"Take Profit set at ${take_profit_price}")
+                logger.info(f"Take Profit set at ${take_profit_price}")
                 result['take_profit'] = True
 
             except Exception as e:
-                print(f"Error setting take profit: {e}")
+                logger.error(f"Error setting take profit: {e}")
 
         return result
 
@@ -458,7 +499,7 @@ class OrderExecutor:
             return float(balance.get(currency, {}).get('free', 0))
 
         except Exception as e:
-            print(f"Error fetching balance: {e}")
+            logger.error(f"Error fetching balance: {e}")
             return 0.0
 
     def get_account_info(self) -> Dict:
@@ -486,21 +527,24 @@ class OrderExecutor:
             }
 
         except Exception as e:
-            print(f"Error fetching account info: {e}")
+            logger.error(f"Error fetching account info: {e}")
             return {}
 
 
 if __name__ == "__main__":
     # Test the executor (in testnet mode)
-    print("Testing Order Executor...")
+    from config.logging_config import setup_logging
+    setup_logging()
+
+    logger.info("Testing Order Executor...")
 
     # Note: Add your testnet API credentials to test
     executor = OrderExecutor('binance', testnet=True)
 
     # Get balance
     balance = executor.get_balance('USDT')
-    print(f"\nUSDT Balance: ${balance:,.2f}")
+    logger.info(f"\nUSDT Balance: ${balance:,.2f}")
 
     # Get account info
     account_info = executor.get_account_info()
-    print(f"\nAccount Info: {account_info}")
+    logger.info(f"\nAccount Info: {account_info}")

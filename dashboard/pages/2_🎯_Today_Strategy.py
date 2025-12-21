@@ -19,10 +19,17 @@ from dashboard.components.charts import ChartBuilder
 from dashboard.components.metrics import MetricCard
 from dashboard.components.tables import TableFormatter
 from dashboard.utils.formatters import format_percentage, format_timestamp
+from dashboard.utils.theme import apply_dark_mode_css, initialize_dark_mode
 from config.config import Config
 
 
 st.set_page_config(page_title="오늘의 전략", page_icon="🎯", layout="wide")
+
+# Initialize dark mode immediately to prevent flash
+initialize_dark_mode()
+
+# Apply dark mode CSS
+apply_dark_mode_css()
 
 # Title
 st.title("🎯 오늘의 챔피언 전략")
@@ -34,6 +41,9 @@ if 'data_loader' not in st.session_state:
     st.session_state.data_loader = DashboardDataLoader(config.DB_PATH)
 
 data_loader = st.session_state.data_loader
+
+# Get dark mode from session state (default False if not set)
+dark_mode = st.session_state.get('dark_mode', False)
 
 # Date selector
 col1, col2 = st.columns([3, 1])
@@ -171,7 +181,8 @@ if not rankings.empty:
             strategy_col='strategy_name',
             score_col='score',
             title="전략 성과 비교",
-            top_n=10
+            top_n=10,
+            dark_mode=dark_mode
         ),
         use_container_width=True
     )
@@ -219,7 +230,8 @@ if strategy:
             ChartBuilder.strategy_comparison_radar(
                 metrics_radar,
                 title="전략 성과 지표 (정규화됨)",
-                height=400
+                height=400,
+                dark_mode=dark_mode
             ),
             use_container_width=True
         )

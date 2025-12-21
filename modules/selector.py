@@ -18,7 +18,8 @@ from modules.optimizer import (
     StrategyOptimizer,
     VOLATILITY_BREAKOUT_SPACE,
     RSI_BOLLINGER_SPACE,
-    VOLUME_MA_CROSS_SPACE
+    VOLUME_MA_CROSS_SPACE,
+    SCALPING_GRID_SPACE
 )
 from modules.collector import DataCollector
 from modules.notifier import TelegramNotifier
@@ -29,7 +30,8 @@ from config.config import Config
 from strategies import (
     VolatilityBreakoutStrategy,
     RSIBollingerReversionStrategy,
-    VolumeWeightedMACrossStrategy
+    VolumeWeightedMACrossStrategy,
+    DynamicScalpingGridStrategy
 )
 
 logging.basicConfig(
@@ -87,6 +89,7 @@ class DailyStrategySelector:
             'Volatility_Breakout': VolatilityBreakoutStrategy,
             'RSI_Bollinger_Reversion': RSIBollingerReversionStrategy,
             'Volume_MA_Cross': VolumeWeightedMACrossStrategy,
+            'Scalping_Grid': DynamicScalpingGridStrategy,
             'SMA_Cross': VolatilityBreakoutStrategy  # Fallback to existing strategy
         }
 
@@ -94,7 +97,8 @@ class DailyStrategySelector:
         self.param_space_map = {
             VolatilityBreakoutStrategy: VOLATILITY_BREAKOUT_SPACE,
             RSIBollingerReversionStrategy: RSI_BOLLINGER_SPACE,
-            VolumeWeightedMACrossStrategy: VOLUME_MA_CROSS_SPACE
+            VolumeWeightedMACrossStrategy: VOLUME_MA_CROSS_SPACE,
+            DynamicScalpingGridStrategy: SCALPING_GRID_SPACE
         }
 
         logger.info("DailyStrategySelector initialized")

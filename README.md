@@ -47,8 +47,8 @@
          └────────┬────────┘
                   │
          ┌────────▼────────┐
-         │   3 Strategies  │
-         │  ST-01, 02, 03  │
+         │   8 Strategies  │
+         │  ST-01 ~ ST-08  │
          └────────┬────────┘
                   │
       ┌───────────┼───────────┐
@@ -98,17 +98,31 @@
    - 상세 백테스트 결과 테이블
    - CSV 다운로드
 
-5. **유틸리티 모듈** (`dashboard/utils/`)
+5. **고급 분석 페이지** (`dashboard/pages/5_🔬_Advanced_Analytics.py`)
+   - 심화 통계 분석
+   - 전략별 성과 비교
+   - 리스크 메트릭 시각화
+
+6. **전략 백과사전 페이지** (`dashboard/pages/6_📚_Strategies.py`)
+   - 8가지 전략 상세 설명
+   - 진입/청산 로직 문서화
+   - 파라미터 가이드
+   - 강점/약점 분석
+   - 시장 조건별 권장 전략
+   - 포트폴리오 조합 추천
+   - 메타 전략 시스템 설명
+
+7. **유틸리티 모듈** (`dashboard/utils/`)
    - **data_loader.py**: 데이터베이스 쿼리 레이어 (캐싱, Read-only 연결)
    - **bot_controller.py**: 봇 프로세스 관리 (PID 기반, Start/Stop/Status)
    - **formatters.py**: 데이터 포매팅 헬퍼 (Currency, Percentage, Timestamp)
 
-6. **컴포넌트 모듈** (`dashboard/components/`)
+8. **컴포넌트 모듈** (`dashboard/components/`)
    - **charts.py**: 9가지 Plotly 차트 (Equity Curve, Bar, Radar, Contour, Pie 등)
    - **metrics.py**: 메트릭 카드 컴포넌트
    - **tables.py**: 테이블 포맷터
 
-7. **시스템 통합 개선**
+9. **시스템 통합 개선**
    - 데이터베이스 WAL 모드 활성화 (동시 읽기/쓰기 지원)
    - Read-only 연결 메서드 추가
    - 봇 Graceful Shutdown (SIGTERM/SIGINT 핸들러)
@@ -175,10 +189,15 @@ streamlit run dashboard/app.py
    - 종합 성과 지표 계산 (수익률, 승률, Profit Factor, MDD, Sharpe Ratio)
    - 복합 점수 계산
 
-2. **3가지 핵심 전략 구현**
+2. **8가지 트레이딩 전략 구현**
    - **ST-01: Volatility Breakout** - Larry Williams 변동성 돌파
    - **ST-02: RSI + Bollinger Reversion** - 평균 회귀 전략
    - **ST-03: Volume Weighted MA Cross** - 거래량 확인 MA 크로스
+   - **ST-04: Dynamic Scalping Grid** - ATR 기반 동적 그리드
+   - **ST-05: MACD Momentum** - 추세 추종 모멘텀
+   - **ST-06: Supertrend** - ATR 기반 추세 지표
+   - **ST-07: Keltner Channel Reversion** - 켈트너 채널 평균회귀
+   - **ST-08: Stochastic Momentum** - 스토캐스틱 오실레이터
 
 3. **Optuna 기반 파라미터 최적화** (`modules/optimizer.py`)
    - 베이지안 최적화
@@ -286,6 +305,8 @@ python main_bot.py --mode cleanup   # 정리만
 | **🎯 Today's Strategy** | 오늘의 챔피언 전략, 성과 메트릭, 파라미터, 랭킹 |
 | **📈 History** | 과거 거래 분석, 필터링, 누적 수익, 통계 |
 | **⚙️ Optimization** | 파라미터 최적화 결과, Contour Plot, 백테스트 리포트 |
+| **🔬 Advanced Analytics** | 심화 통계 분석, 전략별 비교, 리스크 메트릭 |
+| **📚 Strategies** | 8가지 전략 백과사전, 상세 가이드, 시장 조건별 추천 |
 
 ### 🧪 테스트 실행
 
@@ -329,7 +350,9 @@ claubit/
 │   │   ├── 1_📊_Dashboard.py      # 실시간 모니터링
 │   │   ├── 2_🎯_Today_Strategy.py # 전략 표시
 │   │   ├── 3_📈_History.py        # 히스토리 분석
-│   │   └── 4_⚙️_Optimization.py   # 최적화 뷰어
+│   │   ├── 4_⚙️_Optimization.py   # 최적화 뷰어
+│   │   ├── 5_🔬_Advanced_Analytics.py # 고급 분석
+│   │   └── 6_📚_Strategies.py     # 전략 백과사전
 │   ├── components/        # UI 컴포넌트
 │   │   ├── charts.py      # Plotly 차트
 │   │   ├── metrics.py     # 메트릭 카드
@@ -345,10 +368,15 @@ claubit/
 ├── database/               # SQLite 데이터베이스
 │   └── init_db.py         # DB 초기화 및 관리
 ├── strategies/             # 전략 클래스
-│   ├── base_strategy.py   # 기본 전략 클래스
-│   ├── volatility_breakout.py  # ST-01
-│   ├── rsi_bollinger.py        # ST-02
-│   └── volume_ma_cross.py      # ST-03
+│   ├── base_strategy.py           # 기본 전략 클래스
+│   ├── volatility_breakout.py     # ST-01: 변동성 돌파
+│   ├── rsi_bollinger.py           # ST-02: RSI + 볼린저 평균회귀
+│   ├── volume_ma_cross.py         # ST-03: 거래량 가중 MA 교차
+│   ├── scalping_grid.py           # ST-04: 동적 스캘핑 그리드
+│   ├── macd_momentum.py           # ST-05: MACD 모멘텀
+│   ├── supertrend.py              # ST-06: 슈퍼트렌드
+│   ├── keltner_channel.py         # ST-07: 켈트너 채널 평균회귀
+│   └── stochastic_momentum.py     # ST-08: 스토캐스틱 모멘텀
 ├── modules/                # 핵심 기능 모듈
 │   ├── collector.py       # 데이터 수집
 │   ├── executor.py        # 주문 실행
@@ -386,7 +414,7 @@ claubit/
 
 ### 🎯 메타 전략 시스템
 - 매일 최적 전략 자동 선정
-- 9가지 전략 변형 테스트
+- 8가지 전략 + 다양한 파라미터 조합
 - 복합 점수 기반 랭킹
 - Quick/Comprehensive 모드
 

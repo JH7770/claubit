@@ -17,10 +17,17 @@ from dashboard.utils.data_loader import DashboardDataLoader
 from dashboard.components.charts import ChartBuilder
 from dashboard.components.metrics import MetricCard
 from dashboard.utils.formatters import format_duration
+from dashboard.utils.theme import apply_dark_mode_css, initialize_dark_mode
 from config.config import Config
 
 
 st.set_page_config(page_title="최적화", page_icon="⚙️", layout="wide")
+
+# Initialize dark mode immediately to prevent flash
+initialize_dark_mode()
+
+# Apply dark mode CSS
+apply_dark_mode_css()
 
 # Title
 st.title("⚙️ 최적화 결과")
@@ -33,6 +40,9 @@ if 'data_loader' not in st.session_state:
     st.session_state.data_loader = DashboardDataLoader(config.DB_PATH)
 
 data_loader = st.session_state.data_loader
+
+# Get dark mode from session state (default False if not set)
+dark_mode = st.session_state.get('dark_mode', False)
 
 # Load optimization runs
 optimization_runs = data_loader.get_optimization_runs(limit=50)
@@ -187,7 +197,8 @@ if run_options:
                             x_col=x_param,
                             y_col=y_param,
                             z_col='score',
-                            height=500
+                            height=500,
+                            dark_mode=dark_mode
                         ),
                         use_container_width=True
                     )
@@ -202,7 +213,8 @@ if run_options:
                             y_col='score',
                             color_col='score',
                             title=f"Score vs {param}",
-                            height=400
+                            height=400,
+                            dark_mode=dark_mode
                         ),
                         use_container_width=True
                     )

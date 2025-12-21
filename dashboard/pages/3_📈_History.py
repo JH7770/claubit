@@ -17,10 +17,17 @@ from dashboard.components.charts import ChartBuilder
 from dashboard.components.metrics import MetricCard
 from dashboard.components.tables import TableFormatter
 from dashboard.utils.formatters import format_currency, format_percentage
+from dashboard.utils.theme import apply_dark_mode_css, initialize_dark_mode
 from config.config import Config
 
 
 st.set_page_config(page_title="기록 및 분석", page_icon="📈", layout="wide")
+
+# Initialize dark mode immediately to prevent flash
+initialize_dark_mode()
+
+# Apply dark mode CSS
+apply_dark_mode_css()
 
 # Title
 st.title("📈 기록 및 분석")
@@ -32,17 +39,103 @@ if 'data_loader' not in st.session_state:
     config = Config()
     st.session_state.data_loader = DashboardDataLoader(config.DB_PATH)
 
+# Initialize filter presets
+if 'filter_presets' not in st.session_state:
+    st.session_state.filter_presets = {
+        "최근 1주일 전체": {
+            "days": 7,
+            "symbol": "All",
+            "strategy": "All"
+        },
+        "최근 1개월 BTC": {
+            "days": 30,
+            "symbol": "BTC/USDT",
+            "strategy": "All"
+        },
+        "최근 1개월 ETH": {
+            "days": 30,
+            "symbol": "ETH/USDT",
+            "strategy": "All"
+        }
+    }
+
 data_loader = st.session_state.data_loader
 
+# =============================================================================
+# FILTER PRESETS SECTION
+# =============================================================================
+st.markdown("### ⚡ 빠른 필터 프리셋")
+
+col1, col2, col3 = st.columns([2, 1, 1])
+
+with col1:
+    preset_names = ["사용자 지정"] + list(st.session_state.filter_presets.keys())
+    selected_preset = st.selectbox(
+        "프리셋 선택",
+        options=preset_names,
+        index=0,
+        help="저장된 필터 조합을 빠르게 적용합니다"
+    )
+
+with col2:
+    if st.button("💾 현재 필터 저장", use_container_width=True):
+        st.session_state.show_save_preset_dialog = True
+
+with col3:
+    if selected_preset != "사용자 지정" and st.button("🗑️ 프리셋 삭제", use_container_width=True):
+        if selected_preset in st.session_state.filter_presets:
+            del st.session_state.filter_presets[selected_preset]
+            st.success(f"'{selected_preset}' 프리셋이 삭제되었습니다!")
+            st.rerun()
+
+# Save preset dialog
+if 'show_save_preset_dialog' not in st.session_state:
+    st.session_state.show_save_preset_dialog = False
+
+if st.session_state.show_save_preset_dialog:
+    with st.form("save_preset_form"):
+        st.markdown("#### 새 프리셋 저장")
+        preset_name = st.text_input("프리셋 이름", placeholder="예: 손실 거래만 보기")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.form_submit_button("저장", use_container_width=True, type="primary"):
+                if preset_name:
+                    # Store current filter state (will be set from actual filters below)
+                    st.session_state.pending_preset_name = preset_name
+                    st.session_state.show_save_preset_dialog = False
+                    st.success(f"'{preset_name}' 프리셋이 저장되었습니다!")
+                    st.rerun()
+                else:
+                    st.error("프리셋 이름을 입력하세요")
+
+        with col2:
+            if st.form_submit_button("취소", use_container_width=True):
+                st.session_state.show_save_preset_dialog = False
+                st.rerun()
+
+st.markdown("---")
+
 # Filters Section
-st.markdown("### 🔍 필터")
+st.markdown("### 🔍 상세 필터")
+
+# Apply preset if selected
+if selected_preset != "사용자 지정":
+    preset_config = st.session_state.filter_presets[selected_preset]
+    default_start = datetime.now() - timedelta(days=preset_config.get("days", 30))
+    default_symbol = preset_config.get("symbol", "All")
+    default_strategy = preset_config.get("strategy", "All")
+else:
+    default_start = datetime.now() - timedelta(days=30)
+    default_symbol = "All"
+    default_strategy = "All"
 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     start_date = st.date_input(
         "시작 날짜",
-        value=datetime.now() - timedelta(days=30),
+        value=default_start,
         max_value=datetime.now()
     )
 
@@ -56,20 +149,37 @@ with col2:
 with col3:
     # Get unique symbols
     symbols = data_loader.get_unique_symbols()
+    symbol_options = ["All"] + symbols
+    default_symbol_idx = symbol_options.index(default_symbol) if default_symbol in symbol_options else 0
+
     symbol_filter = st.selectbox(
         "심볼",
-        options=["All"] + symbols,
-        index=0
+        options=symbol_options,
+        index=default_symbol_idx
     )
 
 with col4:
     # Get unique strategies
     strategies = data_loader.get_unique_strategies()
+    strategy_options = ["All"] + strategies
+    default_strategy_idx = strategy_options.index(default_strategy) if default_strategy in strategy_options else 0
+
     strategy_filter = st.selectbox(
         "전략",
-        options=["All"] + strategies,
-        index=0
+        options=strategy_options,
+        index=default_strategy_idx
     )
+
+# Save current filter state if pending
+if 'pending_preset_name' in st.session_state:
+    preset_name = st.session_state.pending_preset_name
+    days_diff = (end_date - start_date).days
+    st.session_state.filter_presets[preset_name] = {
+        "days": days_diff if days_diff > 0 else 7,
+        "symbol": symbol_filter,
+        "strategy": strategy_filter
+    }
+    del st.session_state.pending_preset_name
 
 # Convert dates to strings
 start_date_str = start_date.strftime('%Y-%m-%d')
@@ -78,6 +188,9 @@ end_date_str = end_date.strftime('%Y-%m-%d')
 # Apply filters
 symbol_param = None if symbol_filter == "All" else symbol_filter
 strategy_param = None if strategy_filter == "All" else strategy_filter
+
+# Get dark mode from session state (default False if not set)
+dark_mode = st.session_state.get('dark_mode', False)
 
 st.markdown("---")
 
@@ -133,7 +246,8 @@ if not trades.empty:
                 x_col='timestamp',
                 y_col='cumulative_pnl',
                 title="시간에 따른 누적 PNL",
-                height=400
+                height=400,
+                dark_mode=dark_mode
             ),
             use_container_width=True
         )
@@ -154,7 +268,8 @@ if not daily_summaries.empty:
             date_col='date',
             pnl_col='total_pnl',
             title="일일 손익",
-            height=400
+            height=400,
+            dark_mode=dark_mode
         ),
         use_container_width=True
     )
@@ -175,7 +290,8 @@ if not trades.empty and 'exit_reason' in trades.columns:
                 trades,
                 reason_col='exit_reason',
                 title="거래 종료 사유",
-                height=400
+                height=400,
+                dark_mode=dark_mode
             ),
             use_container_width=True
         )

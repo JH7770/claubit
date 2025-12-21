@@ -115,6 +115,87 @@ class TelegramNotifier:
 
         return self.send_sync(message)
 
+    def send_buy_order(
+        self,
+        symbol: str,
+        side: str,
+        entry_price: float,
+        amount: float,
+        leverage: int,
+        strategy: str,
+        stop_loss: Optional[float] = None,
+        take_profit: Optional[float] = None,
+        order_type: str = "MARKET",
+        is_paper: bool = False
+    ) -> bool:
+        """
+        Send buy order notification with clear BUY emphasis.
+
+        Args:
+            symbol: Trading pair symbol
+            side: 'long' or 'short'
+            entry_price: Entry price
+            amount: Position size
+            leverage: Leverage used
+            strategy: Strategy name
+            stop_loss: Stop loss price
+            take_profit: Take profit price
+            order_type: Order type (MARKET/LIMIT)
+            is_paper: Whether this is paper trading
+
+        Returns:
+            True if successful, False otherwise
+        """
+        emoji = "🟢" if side.lower() == 'long' else "🔴"
+        mode_badge = "[PAPER MODE]\n" if is_paper else ""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Calculate position metrics
+        position_value = entry_price * amount * leverage
+
+        message = f"""
+{emoji} <b>BUY ORDER EXECUTED - {side.upper()}</b>
+{mode_badge}
+<b>Symbol:</b> {symbol}
+<b>Order Type:</b> {order_type}
+<b>Entry Price:</b> ${entry_price:,.2f}
+<b>Amount:</b> {amount:.6f}
+<b>Leverage:</b> {leverage}x
+<b>Strategy:</b> {strategy}
+"""
+
+        if stop_loss and take_profit:
+            # Calculate percentages
+            if side.lower() == 'long':
+                sl_percent = ((stop_loss - entry_price) / entry_price) * 100
+                tp_percent = ((take_profit - entry_price) / entry_price) * 100
+            else:
+                sl_percent = ((entry_price - stop_loss) / entry_price) * 100
+                tp_percent = ((entry_price - take_profit) / entry_price) * 100
+
+            # Calculate risk/reward
+            risk_reward = abs(tp_percent) / abs(sl_percent) if sl_percent != 0 else 0
+
+            # Calculate actual amounts
+            max_risk = abs(entry_price - stop_loss) * amount * leverage
+            potential_profit = abs(take_profit - entry_price) * amount * leverage
+
+            message += f"""
+<b>Stop Loss:</b> ${stop_loss:,.2f} ({sl_percent:+.2f}%)
+<b>Take Profit:</b> ${take_profit:,.2f} ({tp_percent:+.2f}%)
+<b>Risk/Reward:</b> 1:{risk_reward:.2f}
+
+💰 <b>Position Value:</b> ${position_value:,.2f}
+🎯 <b>Max Risk:</b> ${max_risk:,.2f}
+✨ <b>Potential Profit:</b> ${potential_profit:,.2f}
+"""
+        else:
+            message += f"\n💰 <b>Position Value:</b> ${position_value:,.2f}\n"
+
+        message += f"\n<b>Time:</b> {timestamp}"
+
+        return self.send_sync(message)
+
     def send_trade_exit(
         self,
         symbol: str,

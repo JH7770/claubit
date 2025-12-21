@@ -183,6 +183,7 @@ class PaperTradingSimulator:
 
         # Create position
         position = {
+            'symbol': symbol,
             'side': side.upper(),
             'entry_price': entry_price,
             'amount': amount,
@@ -197,11 +198,18 @@ class PaperTradingSimulator:
         self.positions[symbol] = position
         self.balance -= margin_required
 
+        # Save to database
+        try:
+            position_id = self.db_manager.save_position(position)
+            position['id'] = position_id
+        except Exception as e:
+            logger.error(f"Error saving position to database: {e}")
+
         logger.info(f"✓ Opened {side} position for {symbol} @ ${entry_price:.2f} | Amount: {amount:.6f} | SL: ${stop_loss:.2f} | TP: ${take_profit:.2f}")
 
-        # Send notification
+        # Send buy order notification
         if self.notifier:
-            self.notifier.send_trade_entry(
+            self.notifier.send_buy_order(
                 symbol=symbol,
                 side=side,
                 entry_price=entry_price,
@@ -209,7 +217,9 @@ class PaperTradingSimulator:
                 leverage=self.leverage,
                 strategy=strategy_name,
                 stop_loss=stop_loss,
-                take_profit=take_profit
+                take_profit=take_profit,
+                order_type="MARKET",
+                is_paper=True
             )
 
         # Log activity
@@ -306,6 +316,7 @@ class PaperTradingSimulator:
         # Log to database
         try:
             self.db_manager.log_trade(trade)
+            self.db_manager.close_position_db(symbol, pos.get('strategy_name'))
         except Exception as e:
             logger.error(f"Error logging trade to database: {e}")
 
@@ -318,6 +329,7 @@ class PaperTradingSimulator:
                 side=pos['side'],
                 entry_price=pos['entry_price'],
                 exit_price=exit_price,
+                amount=pos['amount'],
                 pnl=pnl,
                 pnl_percent=pnl_percent,
                 exit_reason=exit_reason
@@ -579,10 +591,9 @@ class PaperTradingSimulator:
             self.circuit_breaker_triggered = True
 
             if self.notifier:
-                self.notifier.send_risk_warning(
-                    warning_type="CIRCUIT_BREAKER",
-                    message=f"Daily loss limit exceeded: {loss_percent:.2f}% / {self.max_daily_loss_percent}%",
-                    current_balance=self.balance
+                self.notifier.send_risk_alert(
+                    alert_type="CIRCUIT_BREAKER",
+                    message_text=f"Daily loss limit exceeded: {loss_percent:.2f}% / {self.max_daily_loss_percent}%"
                 )
 
             return True

@@ -197,8 +197,42 @@ class TableFormatter:
             )
             df_display = df_display.drop('opened_at', axis=1)
 
-        # Clean up column names
-        df_display.columns = [col.replace('_', ' ').title() for col in df_display.columns]
+        # Format Unrealized PNL %
+        if 'unrealized_pnl_percent' in df_display.columns:
+            df_display['Unrealized %'] = df_display['unrealized_pnl_percent'].apply(
+                lambda x: format_percentage(x, decimals=2, include_sign=True) if pd.notna(x) else ""
+            )
+            df_display = df_display.drop('unrealized_pnl_percent', axis=1)
+
+        # Format Duration
+        if 'duration_minutes' in df_display.columns:
+            df_display['Duration'] = df_display['duration_minutes'].apply(
+                lambda x: f"{int(x//60)}h {int(x%60)}m" if pd.notna(x) and x > 0 else "0m"
+            )
+            df_display = df_display.drop('duration_minutes', axis=1)
+
+        # Format R/R Ratio
+        if 'rr_ratio' in df_display.columns:
+            df_display['R:R'] = df_display['rr_ratio'].apply(
+                lambda x: f"1:{x:.2f}" if pd.notna(x) and x > 0 else "N/A"
+            )
+            df_display = df_display.drop('rr_ratio', axis=1)
+
+        # Format distance to SL/TP with percentages
+        if 'distance_to_sl_percent' in df_display.columns:
+            df_display['↓ SL Dist'] = df_display['distance_to_sl_percent'].apply(
+                lambda x: f"{abs(x):.2f}%" if pd.notna(x) else ""
+            )
+            df_display = df_display.drop('distance_to_sl_percent', axis=1)
+
+        if 'distance_to_tp_percent' in df_display.columns:
+            df_display['↑ TP Dist'] = df_display['distance_to_tp_percent'].apply(
+                lambda x: f"{abs(x):.2f}%" if pd.notna(x) else ""
+            )
+            df_display = df_display.drop('distance_to_tp_percent', axis=1)
+
+        # Clean up column names (for remaining columns)
+        df_display.columns = [col.replace('_', ' ').title() if col not in ['Unrealized %', 'Duration', 'R:R', '↓ SL Dist', '↑ TP Dist'] else col for col in df_display.columns]
 
         # Translate columns to Korean
         column_map = {
@@ -208,6 +242,11 @@ class TableFormatter:
             'Entry Price': '진입가',
             'Mark Price': '현재가',
             'Unrealized Pnl': '미실현 PNL',
+            'Unrealized %': 'PNL %',
+            'Duration': '지속 시간',
+            'R:R': '손익비',
+            '↓ SL Dist': 'SL 거리',
+            '↑ TP Dist': 'TP 거리',
             'Leverage': '레버리지',
             'Opened At': '진입 시간',
             'Stop Loss': '손절가',
